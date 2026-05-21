@@ -1,0 +1,267 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ENUMS (Sabit Değerler)
+
+enum Status {
+  pending
+  approved
+  rejected
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+  cancelled
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+// MODELLER
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  username     String     @unique
+  email        String     @unique
+  avatar       String?
+  phone        String?
+  address      String?
+  age          Int?
+  password     String
+  joinedDate   DateTime   @default(now())
+  lastLogin    DateTime?
+  status       UserStatus @default(active)
+  isDeleted    Boolean    @default(false)
+
+  // Esnek ayarlar (Theme, Language, Notifications) ve Abonelik bilgisi
+  settings     Json?
+  subscription Json?
+
+  // Stripe
+  stripeCustomerId    String?
+
+  // İlişkiler (Relations)
+  ownedTeams          Team[]               @relation("TeamOwner")
+  teamMemberships     TeamMember[]
+  createdExpenses     Expense[]
+  createdTrips        Trip[]
+  userLogs            UserLog[]
+  notifications       Notification[]       @relation("UserNotifications")
+  sentInvites         Notification[]       @relation("SentInvites")
+  passwordResetTokens PasswordResetToken[]
+  paymentHistory      PaymentRecord[]
+}
+
+// Şifre Sıfırlama Token'ları
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Team {
+  id           String   @id @default(uuid())
+  name         String
+  category     String
+  membersCount Int      @default(0)
+  isDeleted    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  image        String?
+  
+  // Esnek takım ayarları (Currency, Limits, PlanContext vb.)
+  settings     Json?    
+
+  // İlişkiler
+  ownerId      String
+  owner        User          @relation("TeamOwner", fields: [ownerId], references: [id])
+  members      TeamMember[]
+  expenses     Expense[]
+  trips        Trip[]
+  teamLogs     TeamLog[]
+  notifications Notification[] @relation("TeamNotifications")
+}
+
+// Çoka-Çok İlişki (User <-> Team) + RBAC (Roller ve İzinler)
+model TeamMember {
+  id          String   @id @default(uuid())
+  userId      String
+  teamId      String
+  roleName    String   // Örn: Admin, Moderator, Member
+  permissions String[] // Deny list veya allow list izinleri
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  // Bir kullanıcı bir takıma sadece bir kez eklenebilir
+  @@unique([userId, teamId]) 
+}
+
+model Expense {
+  id              String   @id @default(uuid())
+  title           String
+  category        String
+  merchant        String
+  date            DateTime
+  report          String?
+  amount          Float
+  currency        String
+  currencySymbol  String
+  localAmount     Float?
+  localCurrency   String?
+  localSymbol     String?
+  exchangeRates   Json?    // USD: 1, TRY: 35.12 vb.
+  paymentMethod   String?
+  status          Status   @default(pending)
+  rejectionReason String?
+  desc            String?
+  icon            String?
+  image           String?
+  receipt         String?
+  isReported      Boolean  @default(false)
+
+  // İlişkiler
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  teamId          String
+  team            Team     @relation(fields: [teamId], references: [id])
+}
+
+model Trip {
+  id              String   @id @default(uuid())
+  title           String
+  category        String
+  destination     String
+  vehicle         String
+  duration        String?
+  date            DateTime
+  startDate       DateTime?
+  endDate         DateTime?
+  amount          Float
+  currency        String
+  currencySymbol  String
+  localAmount     Float?
+  localCurrency   String?
+  localSymbol     String?
+  exchangeRates   Json?
+  status          String   @default("pending") // onroad vs gibi custom statüler olabilir diye String bırakıldı
+  statusClass     String?
+  rejectionReason String?
+  report          String?
+  desc            String?
+  icon            String?
+
+  // İlişkiler
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  teamId          String
+  team            Team     @relation(fields: [teamId], references: [id])
+}
+
+model Plan {
+  id            String   @id @default(uuid())
+  name          String
+  price         Float
+  currency      String
+  features      Json     // PlanFeature[] (included/text objeleri)
+  feature_keys  String[] // ["daily_tracking", "ocr_scan"]
+  promise       Json?    // { teamLimit, TeamMemberLimit }
+  description   String?
+  cta           String?
+  icon          String?
+  badge         String?
+  popular       Boolean  @default(false)
+  order         Int      @default(0)
+  ocrLimit      Int?
+  clickedNumber Int      @default(0)
+}
+
+model Notification {
+  id              String   @id @default(uuid())
+  type            String   // request | info | invite
+  category        String?  // expense | trip | team | personal | success | warning
+  title           String?
+  text            String?  // requests için 'detail', infolar için 'text' alanı
+  userName        String?  // Gönderenin/talebi oluşturanın denormalize adı (join'den kaçınmak için)
+  date            DateTime @default(now())
+  targetId        String?  // İlgili expense/trip id'si
+  path            String?
+  status          String?  // pending | approved | rejected (request tipler için)
+  rejectionReason String?
+
+  // İlişkiler
+  userId    String?  // Bildirimin gideceği kişi (null ise takım geneli)
+  user      User?    @relation("UserNotifications", fields: [userId], references: [id])
+
+  teamId    String?
+  team      Team?    @relation("TeamNotifications", fields: [teamId], references: [id])
+
+  senderId  String?  // Talep veya daveti oluşturan kişi
+  sender    User?    @relation("SentInvites", fields: [senderId], references: [id])
+}
+
+model UserLog {
+  id        Int      @id @default(autoincrement())
+  action    String
+  timestamp DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+// Ödeme Kayıtları — her başarılı/başarısız ödeme buraya yazılır
+model PaymentRecord {
+  id                    String        @id @default(uuid())
+  userId                String
+  planId                String
+  amount                Float
+  currency              String        @default("usd")
+  status                PaymentStatus @default(pending)
+  stripePaymentIntentId String?       @unique
+  stripeCustomerId      String?
+  planName              String?
+  cardLastFour          String?
+  cardBrand             String?
+  failureReason         String?
+  metadata              Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TeamLog {
+  id        String   @id @default(uuid())
+  type      String   // expense_add, member_join vb.
+  role      String?
+  icon      String?
+  iconClass String?
+  badge     String?
+  action    String
+  target    String?  // Hedef kayıt id'si
+  userName  String?  // Aksiyonu gerçekleştiren kullanıcının adı
+  amount    String?
+  tag       String?
+  tagClass  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id])
+}
