@@ -1,31 +1,52 @@
 const prisma = require('../config/prisma');
+const logger = require('../utils/logger');
 
-// Kullanıcının istenen takımın üyesi olup olmadığını doğrular.
-// teamId: req.params.id, req.params.teamId veya req.query.teamId'den okunur.
+// Takım Üyelik Doğrulayıcı
+// Tek DB sorgusuyla hem üyeliği hem takımın silinmemiş olduğunu doğrular.
 //
-// Kullanım: router.get('/:id/members', authenticate, teamGuard, controller.getMembers)
-const teamGuard = async (req: any, res: any, next: any) => {
+// teamId: req.params.teamId | req.query.teamId | req.body.teamId sırasıyla
+// req.params.id dahil edilmez — expense/trip rotalarında :id kaynak ID'sidir.
+//
+// Kullanım: router.get('/:teamId/members', authenticate, teamGuard, controller)
+const teamGuard = async (req: any, res: any, next: any): Promise<void> => {
   try {
     const userId = req.user?.userId;
-    const teamId = req.params.teamId || req.params.id || req.query.teamId;
+    const teamId = req.params.teamId || req.query.teamId || req.body?.teamId;
 
     if (!userId || !teamId) {
-      return res.status(400).json({ status: 'ERROR', message: 'Takım kimliği bulunamadı.' });
+      res.status(400).json({ status: 'ERROR', message: 'Takım kimliği bulunamadı.' });
+      return;
     }
 
+    // Tek sorguda hem üyelik hem takım durumu kontrol edilir
     const member = await prisma.teamMember.findUnique({
-      where: { userId_teamId: { userId, teamId } },
+      where:   { userId_teamId: { userId, teamId } },
+      include: { team: { select: { isDeleted: true } } },
     });
 
     if (!member) {
-      return res.status(403).json({
-        status: 'ERROR',
+      logger.warn(
+        `Yetkisiz takım erişimi [${req.method} ${req.originalUrl}]`,
+        { userId, teamId },
+        'security',
+      );
+      res.status(403).json({
+        status:  'ERROR',
         message: 'Bu takıma erişim yetkiniz bulunmamaktadır.',
       });
+      return;
     }
 
-    req.teamMember = member; // { userId, teamId, roleName, permissions }
+    if (member.team?.isDeleted) {
+      res.status(404).json({ status: 'ERROR', message: 'Takım bulunamadı veya silinmiş.' });
+      return;
+    }
+
+    // team alanı controller'larda gereksiz — sadece middleware'e özel
+    const { team: _team, ...memberData } = member;
+    req.teamMember = memberData; // { userId, teamId, roleName, permissions }
     next();
+
   } catch (error) {
     next(error);
   }

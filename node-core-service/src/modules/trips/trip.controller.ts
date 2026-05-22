@@ -47,7 +47,9 @@ class TripController {
       const { status, rejectionReason } = req.body;
       if (!status) return res.status(400).json({ status: 'ERROR', message: 'status zorunludur.' });
 
-      const trip = await tripService.updateTripStatus(req.params.id, status, rejectionReason);
+      const adminName = req.user?.email || 'Admin';
+      const teamId    = req.teamMember?.teamId;
+      const trip      = await tripService.updateTripStatus(req.params.id, status, adminName, rejectionReason, teamId);
       return res.status(200).json({ status: 'OK', data: trip });
     } catch (error) { next(error); }
   }

@@ -47,7 +47,9 @@ class ExpenseController {
       const { status, rejectionReason } = req.body;
       if (!status) return res.status(400).json({ status: 'ERROR', message: 'status zorunludur.' });
 
-      const expense = await expenseService.updateStatus(req.params.id, status, rejectionReason);
+      const adminName = req.user?.email || 'Admin';
+      const teamId    = req.teamMember?.teamId;
+      const expense   = await expenseService.updateStatus(req.params.id, status, adminName, rejectionReason, teamId);
       return res.status(200).json({ status: 'OK', data: expense });
     } catch (error) { next(error); }
   }

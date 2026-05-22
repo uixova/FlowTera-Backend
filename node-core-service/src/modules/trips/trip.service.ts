@@ -1,12 +1,15 @@
-const prisma = require('../../config/prisma');
+const prisma   = require('../../config/prisma');
 const { DEFAULT_PAGE_SIZE } = require('../../config/constants');
+const logs     = require('../../utils/logWriter');
+const notify   = require('../../utils/notifyTrigger');
 
+// Veri Zenginleştirici
 const createdBySelect = {
   select: { name: true, avatar: true, isDeleted: true, subscription: true },
 };
 
 const enrichTrip = (trip: any) => {
-  const creator  = trip.createdBy;
+  const creator   = trip.createdBy;
   const isDeleted = creator?.isDeleted || false;
   const sub       = creator?.subscription as any;
 
@@ -20,6 +23,7 @@ const enrichTrip = (trip: any) => {
 };
 
 class TripService {
+  // Takıma ait seyahatleri sayfalı getir
   async getTripsByTeam(teamId: string, page = 1, pageSize = DEFAULT_PAGE_SIZE) {
     const skip = (page - 1) * pageSize;
 
@@ -42,6 +46,7 @@ class TripService {
     };
   }
 
+  // Tekil seyahat getir
   async getTripById(tripId: string) {
     const trip = await prisma.trip.findUnique({
       where:   { id: tripId },
@@ -51,6 +56,7 @@ class TripService {
     return enrichTrip(trip);
   }
 
+  // Yeni seyahat oluştur
   async createTrip(input: any, createdById: string) {
     const trip = await prisma.trip.create({
       data: {
@@ -78,9 +84,24 @@ class TripService {
       },
       include: { createdBy: createdBySelect },
     });
-    return enrichTrip(trip);
+
+    const enriched   = enrichTrip(trip);
+    const amountStr  = `${input.currency} ${Number(input.amount).toLocaleString()}`;
+
+    // Oluşturan kişinin rolünü bul
+    const member = await prisma.teamMember.findUnique({
+      where:  { userId_teamId: { userId: createdById, teamId: input.teamId } },
+      select: { roleName: true },
+    }).catch(() => null);
+    const role = member?.roleName || 'Member';
+
+    // TeamLog — seyahat eklendi
+    logs.logTripCreated(input.teamId, enriched.userName, role, input.title, input.destination, amountStr);
+
+    return enriched;
   }
 
+  // Seyahat güncelle
   async updateTrip(id: string, data: any) {
     const allowed = [
       'title', 'category', 'destination', 'vehicle', 'date', 'startDate', 'endDate',
@@ -105,16 +126,44 @@ class TripService {
     return enrichTrip(trip);
   }
 
-  // Durum geçişi: pending → onroad → completed
-  async updateTripStatus(id: string, status: string, rejectionReason?: string) {
+  // Durum geçişi: pending → onroad → completed (admin aksiyonu)
+  async updateTripStatus(
+    id:               string,
+    status:           string,
+    adminName:        string,
+    rejectionReason?: string,
+    teamId?:          string,
+  ) {
+    // Sahiplik cross-check: seyahat gerçekten o takıma ait mi?
+    const existing = await prisma.trip.findUnique({ where: { id }, select: { teamId: true } });
+    if (!existing) throw new Error('Seyahat bulunamadı.');
+    if (teamId && existing.teamId !== teamId) throw new Error('Bu seyahat belirtilen takıma ait değil.');
+
     const trip = await prisma.trip.update({
       where:   { id },
       data:    { status, rejectionReason: rejectionReason || null },
       include: { createdBy: createdBySelect },
     });
-    return enrichTrip(trip);
+
+    const enriched  = enrichTrip(trip);
+    const amountStr = `${trip.currency} ${Number(trip.amount).toLocaleString()}`;
+
+    // TeamLog + Bildirim — durum geçişine göre farklı log tipi
+    if (status === 'approved') {
+      logs.logTripApproved(trip.teamId, adminName, trip.title, trip.destination, amountStr);
+      notify.notifyTripApproved(trip.createdById, trip.teamId, trip.title);
+    } else if (status === 'rejected') {
+      // "rejection" log tipi kullanılır (harcama red ile aynı tip)
+      logs.logExpenseRejected(trip.teamId, adminName, trip.title, rejectionReason);
+      notify.notifyTripRejected(trip.createdById, trip.teamId, trip.title, rejectionReason);
+    } else if (status === 'onroad' || status === 'completed') {
+      logs.logTripStatusUpdate(trip.teamId, enriched.userName, trip.title, status, trip.destination);
+    }
+
+    return enriched;
   }
 
+  // Seyahat sil
   async deleteTrip(id: string) {
     await prisma.trip.delete({ where: { id } });
     return { message: 'Seyahat başarıyla silindi.' };

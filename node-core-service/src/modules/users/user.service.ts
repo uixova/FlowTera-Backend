@@ -3,7 +3,8 @@ const { hashPassword, comparePassword } = require('../../utils/bcrypt');
 const { DEFAULT_SUBSCRIPTION, DEFAULT_SETTINGS, DEFAULT_PAGE_SIZE } = require('../../config/constants');
 
 const mapUser = (user: any) => {
-  const { password, teamMemberships, ...rest } = user;
+  // Hassas ve dahili alanlar response'a eklenmez
+  const { password, stripeCustomerId, teamMemberships, ...rest } = user;
   return {
     ...rest,
     subscription: user.subscription || DEFAULT_SUBSCRIPTION,

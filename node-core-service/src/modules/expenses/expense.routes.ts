@@ -1,14 +1,20 @@
-const { Router }        = require('express');
-const expenseController = require('./expense.controller');
-const { authenticate }  = require('../../middlewares/authenticate');
+const { Router }          = require('express');
+const expenseController   = require('./expense.controller');
+const { authenticate }    = require('../../middlewares/authenticate');
+const { teamGuard }       = require('../../middlewares/teamGuard');
+const { adminGuard }      = require('../../middlewares/adminGuard');
 
 const router = Router();
 
-router.get('/',              authenticate, expenseController.getExpenses);
+// teamId zorunlu (req.query.teamId)
+router.get('/',              authenticate, teamGuard, expenseController.getExpenses);
+// ID bazlı — teamGuard burada çalışamaz; servis katmanı sahipliği doğrular
 router.get('/:id',          authenticate, expenseController.getExpenseById);
-router.post('/',             authenticate, expenseController.createExpense);
+// teamId body'de gelir (req.body.teamId)
+router.post('/',             authenticate, teamGuard, expenseController.createExpense);
 router.put('/:id',          authenticate, expenseController.updateExpense);
-router.patch('/:id/status', authenticate, expenseController.updateStatus);
+// Onay/red — teamId body'de, sadece Admin yapabilir
+router.patch('/:id/status', authenticate, teamGuard, adminGuard, expenseController.updateStatus);
 router.delete('/:id',       authenticate, expenseController.deleteExpense);
 
 module.exports = router;

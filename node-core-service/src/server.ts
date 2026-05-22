@@ -17,6 +17,16 @@ async function startServer() {
     server.listen(PORT, () => {
       console.log(`🚀 Node Core Service ${PORT} portunda yayında.`);
     });
+
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} zaten kullanımda. Kapat: kill $(lsof -ti:${PORT})`);
+      } else {
+        console.error('❌ Sunucu hatası:', err.message);
+      }
+      process.exit(1);
+    });
+
   } catch (error) {
     console.error('💥 Sunucu başlatılırken hata oluştu:', error);
     await prismaClient.$disconnect();

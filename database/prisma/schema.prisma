@@ -5,6 +5,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  // Prisma v7: "prisma-client" da kabul edilir; şimdilik uyumluluk için "prisma-client-js" kalır
 }
 
 // ENUMS (Sabit Değerler)
@@ -140,7 +141,11 @@ model Expense {
   createdById     String
   createdBy       User     @relation(fields: [createdById], references: [id])
   teamId          String
-  team            Team     @relation(fields: [teamId], references: [id])
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([createdById])
+  @@index([teamId, status])
 }
 
 model Trip {
@@ -171,7 +176,11 @@ model Trip {
   createdById     String
   createdBy       User     @relation(fields: [createdById], references: [id])
   teamId          String
-  team            Team     @relation(fields: [teamId], references: [id])
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([createdById])
+  @@index([teamId, status])
 }
 
 model Plan {
@@ -207,13 +216,18 @@ model Notification {
 
   // İlişkiler
   userId    String?  // Bildirimin gideceği kişi (null ise takım geneli)
-  user      User?    @relation("UserNotifications", fields: [userId], references: [id])
+  user      User?    @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
 
   teamId    String?
-  team      Team?    @relation("TeamNotifications", fields: [teamId], references: [id])
+  team      Team?    @relation("TeamNotifications", fields: [teamId], references: [id], onDelete: Cascade)
 
   senderId  String?  // Talep veya daveti oluşturan kişi
-  sender    User?    @relation("SentInvites", fields: [senderId], references: [id])
+  sender    User?    @relation("SentInvites", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([teamId])
+  @@index([type, teamId])
+  @@index([userId, type])
 }
 
 model UserLog {
@@ -222,7 +236,9 @@ model UserLog {
   timestamp DateTime @default(now())
 
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Ödeme Kayıtları — her başarılı/başarısız ödeme buraya yazılır
@@ -263,5 +279,7 @@ model TeamLog {
   createdAt DateTime @default(now())
 
   teamId    String
-  team      Team     @relation(fields: [teamId], references: [id])
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
 }

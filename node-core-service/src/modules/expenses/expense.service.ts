@@ -1,9 +1,15 @@
-const prisma = require('../../config/prisma');
+const prisma   = require('../../config/prisma');
 const { DEFAULT_PAGE_SIZE } = require('../../config/constants');
+const logs     = require('../../utils/logWriter');
+const notify   = require('../../utils/notifyTrigger');
 
-// createdBy üzerinden kullanıcı verisini zenginleştir
+// Veri Zenginleştirici
+const createdBySelect = {
+  select: { name: true, avatar: true, isDeleted: true, subscription: true },
+};
+
 const enrichExpense = (expense: any) => {
-  const creator  = expense.createdBy;
+  const creator   = expense.createdBy;
   const isDeleted = creator?.isDeleted || false;
   const sub       = creator?.subscription as any;
 
@@ -16,11 +22,8 @@ const enrichExpense = (expense: any) => {
   };
 };
 
-const createdBySelect = {
-  select: { name: true, avatar: true, isDeleted: true, subscription: true },
-};
-
 class ExpenseService {
+  // Takıma ait harcamaları sayfalı getir
   async getAllExpenses(teamId: string, page = 1, pageSize = DEFAULT_PAGE_SIZE) {
     const skip = (page - 1) * pageSize;
 
@@ -43,6 +46,7 @@ class ExpenseService {
     };
   }
 
+  // Tekil harcama getir
   async getExpenseById(id: string) {
     const expense = await prisma.expense.findUnique({
       where:   { id },
@@ -52,10 +56,11 @@ class ExpenseService {
     return enrichExpense(expense);
   }
 
+  // Yeni harcama oluştur
   async createExpense(input: any, createdById: string) {
     // Takım ayarlarından otomatik onay kontrolü
-    const team = await prisma.team.findUnique({ where: { id: input.teamId } });
-    const settings   = (team?.settings as any) || {};
+    const team     = await prisma.team.findUnique({ where: { id: input.teamId } });
+    const settings = (team?.settings as any) || {};
     const autoApprove = settings.autoApproved && input.amount <= (settings.autoApprovedLimit || 0);
 
     const expense = await prisma.expense.create({
@@ -81,9 +86,23 @@ class ExpenseService {
       include: { createdBy: createdBySelect },
     });
 
-    return enrichExpense(expense);
+    const enriched   = enrichExpense(expense);
+    const amountStr  = `${input.currency} ${Number(input.amount).toLocaleString()}`;
+
+    // Oluşturan kişinin rolünü TeamMember tablosundan bul
+    const member = await prisma.teamMember.findUnique({
+      where:  { userId_teamId: { userId: createdById, teamId: input.teamId } },
+      select: { roleName: true },
+    }).catch(() => null);
+    const role = member?.roleName || 'Member';
+
+    // TeamLog — harcama eklendi
+    logs.logExpenseCreated(input.teamId, enriched.user, role, input.title, amountStr);
+
+    return enriched;
   }
 
+  // Harcama güncelle
   async updateExpense(id: string, data: any) {
     const allowed = [
       'title', 'category', 'merchant', 'date', 'amount', 'currency', 'currencySymbol',
@@ -106,15 +125,41 @@ class ExpenseService {
     return enrichExpense(expense);
   }
 
-  async updateStatus(id: string, status: 'pending' | 'approved' | 'rejected', rejectionReason?: string) {
+  // Harcama durumunu güncelle (admin aksiyonu)
+  async updateStatus(
+    id:               string,
+    status:           'pending' | 'approved' | 'rejected',
+    adminName:        string,
+    rejectionReason?: string,
+    teamId?:          string,
+  ) {
+    // Sahiplik cross-check: harcama gerçekten o takıma ait mi?
+    const existing = await prisma.expense.findUnique({ where: { id }, select: { teamId: true } });
+    if (!existing) throw new Error('Harcama bulunamadı.');
+    if (teamId && existing.teamId !== teamId) throw new Error('Bu harcama belirtilen takıma ait değil.');
+
     const expense = await prisma.expense.update({
       where:   { id },
       data:    { status, rejectionReason: rejectionReason || null },
       include: { createdBy: createdBySelect },
     });
-    return enrichExpense(expense);
+
+    const enriched  = enrichExpense(expense);
+    const amountStr = `${expense.currency} ${Number(expense.amount).toLocaleString()}`;
+
+    // TeamLog + Bildirim — onay veya red
+    if (status === 'approved') {
+      logs.logExpenseApproved(expense.teamId, adminName, expense.title, amountStr);
+      notify.notifyExpenseApproved(expense.createdById, expense.teamId, expense.title);
+    } else if (status === 'rejected') {
+      logs.logExpenseRejected(expense.teamId, adminName, expense.title, rejectionReason);
+      notify.notifyExpenseRejected(expense.createdById, expense.teamId, expense.title, rejectionReason);
+    }
+
+    return enriched;
   }
 
+  // Harcama sil
   async deleteExpense(id: string) {
     await prisma.expense.delete({ where: { id } });
     return { message: 'Harcama başarıyla silindi.' };

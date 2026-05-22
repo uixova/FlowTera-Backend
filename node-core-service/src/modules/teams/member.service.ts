@@ -1,31 +1,46 @@
-const prisma = require('../../config/prisma');
+const prisma  = require('../../config/prisma');
+const logs    = require('../../utils/logWriter');
+const notify  = require('../../utils/notifyTrigger');
 
 class MemberService {
   // Üye rol ve izinlerini güncelle (EditRoleModal'dan tetiklenir)
-  async updateMember(teamId: string, userId: string, roleName: string, permissions: string[] = []) {
+  async updateMember(teamId: string, userId: string, roleName: string, permissions: string[] = [], adminName = '') {
     const updated = await prisma.teamMember.update({
       where: { userId_teamId: { userId, teamId } },
       data:  { roleName, permissions },
     });
 
-    // Aktivite logu — fire & forget
-    prisma.teamLog.create({
-      data: {
-        teamId,
-        type:     'member_role_update',
-        role:     roleName,
-        action:   `Rol güncellendi`,
-        target:   userId,
-        icon:     'shield',
-        iconClass: 'blue',
-      },
-    }).catch(() => {});
+    // Hedef kullanıcının adını bul
+    const targetUser = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { name: true },
+    }).catch(() => null);
+    const targetName = targetUser?.name || userId;
+
+    // TeamLog — rol güncellendi
+    logs.writeTeamLog({
+      teamId,
+      type:     'member_role_update',
+      userName: adminName || 'Admin',
+      role:     'Admin',
+      badge:    'Admin',
+      action:   'rolünü güncelledi:',
+      target:   targetName,
+      details:  { new_role: roleName },
+    });
 
     return updated;
   }
 
-  // Üye çıkarma
-  async removeMember(teamId: string, userId: string) {
+  // Üye çıkar
+  async removeMember(teamId: string, userId: string, adminName = '') {
+    // Çıkarılacak üyenin adını önce al
+    const targetUser = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { name: true },
+    }).catch(() => null);
+    const targetName = targetUser?.name || userId;
+
     await prisma.teamMember.delete({
       where: { userId_teamId: { userId, teamId } },
     });
@@ -34,23 +49,21 @@ class MemberService {
     const count = await prisma.teamMember.count({ where: { teamId } });
     await prisma.team.update({ where: { id: teamId }, data: { membersCount: count } });
 
-    // Aktivite logu
-    prisma.teamLog.create({
-      data: {
-        teamId,
-        type:      'member_remove',
-        action:    'Üye çıkarıldı',
-        target:    userId,
-        icon:      'user-minus',
-        iconClass: 'red',
-      },
-    }).catch(() => {});
+    // TeamLog — üye çıkarıldı
+    logs.logMemberRemoved(teamId, adminName || 'Admin', targetName);
 
     return { message: 'Üye başarıyla çıkarıldı.' };
   }
 
   // Takıma yeni üye davet et / ekle
-  async addMember(teamId: string, userId: string, roleName = 'Member', permissions: string[] = []) {
+  async addMember(
+    teamId:      string,
+    userId:      string,
+    roleName     = 'Member',
+    permissions: string[] = [],
+    adminId      = '',
+    adminName    = '',
+  ) {
     const existing = await prisma.teamMember.findUnique({
       where: { userId_teamId: { userId, teamId } },
     });
@@ -63,6 +76,24 @@ class MemberService {
     // Üye sayısını güncelle
     const count = await prisma.teamMember.count({ where: { teamId } });
     await prisma.team.update({ where: { id: teamId }, data: { membersCount: count } });
+
+    // Eklenen üyenin adını bul
+    const newUser = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { name: true },
+    }).catch(() => null);
+    const newMemberName = newUser?.name || userId;
+
+    // TeamLog — yeni üye katıldı
+    logs.logMemberJoined(teamId, adminName || 'Admin', newMemberName, roleName);
+
+    // Davet bildirimi — kullanıcıya invite tipinde bildirim gönder
+    if (adminId) {
+      notify.notifyTeamInvite(userId, teamId, adminName || 'Admin', adminId);
+    }
+
+    // Takım geneline WS yayını — diğer üyeler anlık görür
+    notify.notifyMemberJoined(teamId, newMemberName);
 
     return member;
   }

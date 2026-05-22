@@ -10,14 +10,14 @@ class TeamController {
 
   async getMembers(req: any, res: any, next: any) {
     try {
-      const members = await teamService.getTeamMembers(req.params.id);
+      const members = await teamService.getTeamMembers(req.params.teamId);
       res.status(200).json({ status: 'OK', data: members });
     } catch (error) { next(error); }
   }
 
   async getTeamSettings(req: any, res: any, next: any) {
     try {
-      const settings = await teamService.getTeamSettings(req.params.id);
+      const settings = await teamService.getTeamSettings(req.params.teamId);
       if (!settings) return res.status(404).json({ status: 'ERROR', message: 'Takım bulunamadı.' });
       res.status(200).json({ status: 'OK', data: settings });
     } catch (error) { next(error); }
@@ -38,14 +38,14 @@ class TeamController {
 
   async updateTeam(req: any, res: any, next: any) {
     try {
-      const team = await teamService.updateTeam(req.params.id, req.body);
+      const team = await teamService.updateTeam(req.params.teamId, req.body);
       res.status(200).json({ status: 'OK', data: team });
     } catch (error) { next(error); }
   }
 
   async updateTeamSettings(req: any, res: any, next: any) {
     try {
-      const team = await teamService.updateTeamSettings(req.params.id, req.body);
+      const team = await teamService.updateTeamSettings(req.params.teamId, req.body);
       res.status(200).json({ status: 'OK', data: team });
     } catch (error: any) {
       res.status(400).json({ status: 'ERROR', message: error.message });
@@ -54,7 +54,7 @@ class TeamController {
 
   async deleteTeam(req: any, res: any, next: any) {
     try {
-      await teamService.deleteTeam(req.params.id);
+      await teamService.deleteTeam(req.params.teamId);
       res.status(200).json({ status: 'OK', message: 'Takım başarıyla silindi.' });
     } catch (error) { next(error); }
   }

@@ -1,14 +1,16 @@
 const prisma          = require('../../config/prisma');
 const { comparePassword, hashPassword } = require('../../utils/bcrypt');
 const { generateToken }                 = require('../../utils/jwt');
+const { generateUserId }                = require('../../utils/generateId');
 const { DEFAULT_SUBSCRIPTION, DEFAULT_SETTINGS } = require('../../config/constants');
+const { logUserLogin }                  = require('../../utils/logWriter');
 
 // Geçici 2FA kod deposu — üretimde Redis'e taşınacak
 const pendingVerifications = new Map<string, { code: string; userId: string; expiresAt: number }>();
 
-// Prisma user nesnesini frontend User tipine dönüştürür
+// Prisma user nesnesini frontend User tipine dönüştürür — hassas alanlar çıkarılır
 const mapUser = (user: any) => {
-  const { password, teamMemberships, ...rest } = user;
+  const { password, stripeCustomerId, teamMemberships, ...rest } = user;
   return {
     ...rest,
     subscription: user.subscription || DEFAULT_SUBSCRIPTION,
@@ -83,6 +85,9 @@ class AuthService {
     prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } })
       .catch((err: any) => console.error('lastLogin güncelleme hatası:', err));
 
+    // UserLog — giriş kaydı
+    logUserLogin(user.id, user.email);
+
     const token = generateToken(user.id, user.email);
 
     return { token, user: mapUser(user) };
@@ -102,6 +107,7 @@ class AuthService {
 
     const user = await prisma.user.create({
       data: {
+        id:           generateUserId(),   // Her User ID'si 'U' harfiyle başlar
         name:         payload.name,
         username:     payload.username,
         email,
