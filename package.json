@@ -1,8 +1,11 @@
 {
   "devDependencies": {
+    "@types/nodemailer": "^8.0.0",
     "prisma": "^5.22.0"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@emailjs/nodejs": "^5.0.2",
+    "@prisma/client": "^5.22.0",
+    "nodemailer": "^8.0.7"
   }
 }

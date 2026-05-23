@@ -1,11 +1,10 @@
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client-js"
-  // Prisma v7: "prisma-client" da kabul edilir; şimdilik uyumluluk için "prisma-client-js" kalır
+  output   = "../../node-core-service/node_modules/.prisma/client"
 }
 
 // ENUMS (Sabit Değerler)
@@ -32,19 +31,21 @@ enum UserStatus {
 // MODELLER
 
 model User {
-  id           String     @id @default(uuid())
-  name         String
-  username     String     @unique
-  email        String     @unique
-  avatar       String?
-  phone        String?
-  address      String?
-  age          Int?
-  password     String
-  joinedDate   DateTime   @default(now())
-  lastLogin    DateTime?
-  status       UserStatus @default(active)
-  isDeleted    Boolean    @default(false)
+  id            String     @id @default(uuid())
+  name          String
+  username      String     @unique
+  email         String     @unique
+  avatar        String?
+  phone         String?
+  address       String?
+  birthDate     DateTime?
+  age           Int?
+  emailVerified Boolean    @default(false)
+  password      String
+  joinedDate    DateTime   @default(now())
+  lastLogin     DateTime?
+  status        UserStatus @default(active)
+  isDeleted     Boolean    @default(false)
 
   // Esnek ayarlar (Theme, Language, Notifications) ve Abonelik bilgisi
   settings     Json?
@@ -260,6 +261,21 @@ model PaymentRecord {
   updatedAt             DateTime      @updatedAt
 
   user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Geçici OTP kayıtları — signup ve login 2FA için
+model PendingOtp {
+  id        String   @id @default(uuid())
+  email     String
+  type      String   // 'signup' | 'login'
+  code      String
+  payload   Json?    // signup: kayıt verisi (şifreli); login: null
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([email, type])
+  @@index([email, type])
 }
 
 model TeamLog {

@@ -1,4 +1,5 @@
 const expenseService   = require('./expense.service');
+const { MAX_PAGE_SIZE } = require('../../config/constants');
 const PYTHON_ML_URL    = process.env.PYTHON_ML_URL    || 'http://localhost:8000';
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
 
@@ -8,8 +9,8 @@ class ExpenseController {
       const { teamId } = req.query;
       if (!teamId) return res.status(400).json({ status: 'ERROR', message: 'teamId zorunludur.' });
 
-      const page     = parseInt(req.query.page     as string) || 1;
-      const pageSize = parseInt(req.query.pageSize as string) || 20;
+      const page     = Math.max(1, parseInt(req.query.page     as string) || 1);
+      const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(req.query.pageSize as string) || 20));
       const result   = await expenseService.getAllExpenses(teamId, page, pageSize);
       return res.status(200).json({ status: 'OK', ...result });
     } catch (error) { next(error); }
@@ -17,7 +18,7 @@ class ExpenseController {
 
   async getExpenseById(req: any, res: any, next: any) {
     try {
-      const expense = await expenseService.getExpenseById(req.params.id);
+      const expense = await expenseService.getExpenseById(req.params.id, req.user.userId);
       if (!expense) return res.status(404).json({ status: 'ERROR', message: 'Harcama bulunamadı.' });
       return res.status(200).json({ status: 'OK', data: expense });
     } catch (error) { next(error); }
@@ -29,11 +30,9 @@ class ExpenseController {
       if (!title || !category || !merchant || !amount || !currency || !teamId)
         return res.status(400).json({ status: 'ERROR', message: 'Zorunlu alanlar eksik.' });
 
-      const createdById = req.user?.userId || req.body.userId;
-      if (!createdById) return res.status(400).json({ status: 'ERROR', message: 'Kullanıcı kimliği bulunamadı.' });
-
-      const role    = req.teamMember?.roleName || 'Member';
-      const expense = await expenseService.createExpense(req.body, createdById, role);
+      const createdById = req.user.userId;
+      const role        = req.teamMember?.roleName || 'Member';
+      const expense     = await expenseService.createExpense(req.body, createdById, role);
       return res.status(201).json({ status: 'OK', data: expense });
     } catch (error) { next(error); }
   }
@@ -65,15 +64,14 @@ class ExpenseController {
   }
 
   // GET /expenses/export?teamId=xxx&format=csv|pdf|excel&period=YYYY-MM
-  // python-ml'den dosya alır, doğrudan istemciye akıtır
   async exportAnalysis(req: any, res: any, next: any) {
     try {
       const { teamId, format, period } = req.query;
       if (!teamId) return res.status(400).json({ status: 'ERROR', message: 'teamId zorunludur.' });
       if (!format) return res.status(400).json({ status: 'ERROR', message: 'format zorunludur (csv|pdf|excel).' });
 
-      const qs      = new URLSearchParams({ format: format as string, ...(period ? { period: period as string } : {}) });
-      const mlRes   = await fetch(`${PYTHON_ML_URL}/ml/analysis/export/${teamId}?${qs}`, {
+      const qs    = new URLSearchParams({ format: format as string, ...(period ? { period: period as string } : {}) });
+      const mlRes = await fetch(`${PYTHON_ML_URL}/ml/analysis/export/${teamId}?${qs}`, {
         headers: { 'X-Internal-API-Key': INTERNAL_API_KEY },
       });
 

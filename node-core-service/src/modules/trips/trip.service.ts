@@ -48,13 +48,19 @@ class TripService {
     };
   }
 
-  // Tekil seyahat getir
-  async getTripById(tripId: string) {
+  // Tekil seyahat getir — userId ile takım üyeliği doğrulanır
+  async getTripById(tripId: string, userId: string) {
     const trip = await prisma.trip.findUnique({
       where:   { id: tripId },
       include: { createdBy: createdBySelect },
     });
     if (!trip) return null;
+
+    const member = await prisma.teamMember.findUnique({
+      where: { userId_teamId: { userId, teamId: trip.teamId } },
+    });
+    if (!member) return null;
+
     return enrichTrip(trip);
   }
 

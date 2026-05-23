@@ -2,19 +2,19 @@ type Application = import('express').Application;
 type ExpressRequest = import('express').Request;
 type ExpressResponse = import('express').Response;
 
+const dotenv      = require('dotenv');
+dotenv.config(); // env YÜKLENMELİ — diğer modüller (prisma, routes) process.env okur
+
 const express     = require('express');
 const cors        = require('cors');
 const helmet      = require('helmet');
 const morgan      = require('morgan');
 const compression = require('compression');
-const dotenv      = require('dotenv');
 
 const mainRouter           = require('./routes');
 const { errorHandler }     = require('./middlewares/errorHandler');
 const { notFound }         = require('./middlewares/notFound');
 const { sanitizeBody }     = require('./middlewares/sanitize');
-
-dotenv.config();
 
 const application: Application = express();
 

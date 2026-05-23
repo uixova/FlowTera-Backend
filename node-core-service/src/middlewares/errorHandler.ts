@@ -66,7 +66,7 @@ const errorHandler = (err: any, req: any, res: any, _next: any): void => {
     return;
   }
 
-  // Genel Hata 
+  // Genel Hata — stack trace sadece server log'a gider, hiçbir zaman response'a eklenmez
   const statusCode = err?.statusCode || err?.status || 500;
   logger.httpError(method, url, statusCode, err?.message || 'Bilinmeyen sunucu hatası');
   logger.error(`Sunucu hatası [${method} ${url}]`, err, 'http');
@@ -74,8 +74,6 @@ const errorHandler = (err: any, req: any, res: any, _next: any): void => {
   res.status(statusCode).json({
     status:  'ERROR',
     message: isProd ? 'Sunucuda bir hata oluştu.' : (err?.message || 'Bilinmeyen hata'),
-    // Geliştirme ortamında stack trace da dahil edilir
-    ...(isProd ? {} : { stack: err?.stack }),
   });
 };
 

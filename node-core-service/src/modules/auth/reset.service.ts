@@ -44,17 +44,20 @@ class ResetService {
       data: { token: rawToken, userId: user.id, expiresAt },
     });
 
-    // Gönderim
-    if (channel === 'sms' && user.phone) {
-      await sendPasswordResetSms(user.phone, rawToken);
-    } else {
-      await sendPasswordResetEmail(user.email, rawToken);
+    // Gönderim — SMTP/SMS hatası kullanıcıya yansıtılmaz (enumeration koruması)
+    try {
+      if (channel === 'sms' && user.phone) {
+        await sendPasswordResetSms(user.phone, rawToken);
+      } else {
+        await sendPasswordResetEmail(user.email, rawToken);
+      }
+    } catch (mailErr: any) {
+      console.error('[RESET] Gönderim başarısız (SMTP/SMS):', mailErr.message);
     }
 
     return {
       success: true,
       message: 'Eğer bu bilgiyle kayıtlı bir hesap varsa, sıfırlama bağlantısı gönderildi.',
-      // Sadece geliştirme ortamında token'ı açıkça dön
       ...(process.env.NODE_ENV !== 'production' && { tokenHint: rawToken }),
     };
   }

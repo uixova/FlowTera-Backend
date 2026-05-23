@@ -7,7 +7,12 @@ const router = Router();
 // Kimlik doğrulama
 router.post('/login',  authController.login);
 router.post('/verify', authController.verify);
-router.post('/signup', authController.signup);
+
+// Kayıt — 2 adımlı OTP akışı
+router.post('/signup/initiate', authController.initiateSignup);
+router.post('/signup/verify',   authController.verifySignup);
+// Doğrudan kayıt (admin/test)
+router.post('/signup',          authController.signup);
 
 // Şifre sıfırlama akışı
 router.post('/forgot-password',           resetController.forgotPassword);

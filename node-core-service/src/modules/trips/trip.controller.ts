@@ -1,4 +1,5 @@
-const tripService = require('./trip.service');
+const tripService      = require('./trip.service');
+const { MAX_PAGE_SIZE } = require('../../config/constants');
 
 class TripController {
   async getTripsByTeam(req: any, res: any, next: any) {
@@ -6,8 +7,8 @@ class TripController {
       const { teamId } = req.query;
       if (!teamId) return res.status(400).json({ status: 'ERROR', message: 'teamId zorunludur.' });
 
-      const page     = parseInt(req.query.page     as string) || 1;
-      const pageSize = parseInt(req.query.pageSize as string) || 20;
+      const page     = Math.max(1, parseInt(req.query.page     as string) || 1);
+      const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(req.query.pageSize as string) || 20));
       const result   = await tripService.getTripsByTeam(teamId, page, pageSize);
       return res.status(200).json({ status: 'OK', ...result });
     } catch (error) { next(error); }
@@ -15,7 +16,7 @@ class TripController {
 
   async getTripById(req: any, res: any, next: any) {
     try {
-      const trip = await tripService.getTripById(req.params.id);
+      const trip = await tripService.getTripById(req.params.id, req.user.userId);
       if (!trip) return res.status(404).json({ status: 'ERROR', message: 'Seyahat kaydı bulunamadı.' });
       return res.status(200).json({ status: 'OK', data: trip });
     } catch (error) { next(error); }
@@ -27,11 +28,9 @@ class TripController {
       if (!title || !category || !destination || !vehicle || !amount || !currency || !teamId)
         return res.status(400).json({ status: 'ERROR', message: 'Zorunlu alanlar eksik.' });
 
-      const createdById = req.user?.userId || req.body.userId;
-      if (!createdById) return res.status(400).json({ status: 'ERROR', message: 'Kullanıcı kimliği bulunamadı.' });
-
-      const role = req.teamMember?.roleName || 'Member';
-      const trip = await tripService.createTrip(req.body, createdById, role);
+      const createdById = req.user.userId;
+      const role        = req.teamMember?.roleName || 'Member';
+      const trip        = await tripService.createTrip(req.body, createdById, role);
       return res.status(201).json({ status: 'OK', data: trip });
     } catch (error) { next(error); }
   }

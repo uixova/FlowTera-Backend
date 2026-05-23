@@ -89,13 +89,19 @@ class ExpenseService {
     };
   }
 
-  // Tekil harcama getir
-  async getExpenseById(id: string) {
+  // Tekil harcama getir — userId ile takım üyeliği doğrulanır
+  async getExpenseById(id: string, userId: string) {
     const expense = await prisma.expense.findUnique({
       where:   { id },
       include: { createdBy: createdBySelect },
     });
     if (!expense) return null;
+
+    const member = await prisma.teamMember.findUnique({
+      where: { userId_teamId: { userId, teamId: expense.teamId } },
+    });
+    if (!member) return null;
+
     return enrichExpense(expense);
   }
 
