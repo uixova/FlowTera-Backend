@@ -6,7 +6,7 @@ from app.config import settings
 # İç servis API anahtarı doğrulayıcı
 # Node-Core veya API Gateway'den gelen istekler X-Internal-API-Key header'ı taşımalı.
 class InternalAuthMiddleware(BaseHTTPMiddleware):
-    SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+    SKIP_PATHS = {"/health", "/ml/health", "/docs", "/openapi.json", "/redoc"}
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path in self.SKIP_PATHS:

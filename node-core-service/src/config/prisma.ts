@@ -11,7 +11,7 @@ const buildDatabaseUrl = (): string => {
 
   const separator = base.includes('?') ? '&' : '?';
   let url = `${base}${separator}connection_limit=${limit}&pool_timeout=15&connect_timeout=10`;
-  if (ssl) url += '&sslmode=require';
+  if (ssl) url += '&sslmode=prefer';
   return url;
 };
 

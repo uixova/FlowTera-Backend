@@ -8,6 +8,14 @@ const failedAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_FAILS      = 20;
 const WINDOW_MS      = 60_000; // 1 dakika
 
+// Süresi dolmuş kayıtları her 5 dakikada temizle — bellek sızıntısını önler
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of failedAttempts) {
+    if (now > record.resetAt) failedAttempts.delete(ip);
+  }
+}, 5 * 60_000).unref(); // .unref(): bu interval süreci canlı tutmaz
+
 const isRateLimited = (ip: string): boolean => {
   const now    = Date.now();
   const record = failedAttempts.get(ip);

@@ -18,3 +18,5 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.47.0
 asyncpg==0.30.0
+pymupdf==1.27.2.3
+httpx==0.28.1

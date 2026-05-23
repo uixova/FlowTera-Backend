@@ -47,6 +47,7 @@ class TeamService {
         email:       m.user?.isDeleted ? ''            : (m.user?.email  || ''),
         isDeleted:   m.user?.isDeleted || false,
         lastLogin:   m.user?.lastLogin || null,
+        role:        (m.roleName || 'Member').toLowerCase(),
         roleName:    m.roleName    || 'Member',
         permissions: m.permissions || [],
       }))
@@ -133,8 +134,11 @@ class TeamService {
     return prisma.team.update({ where: { id: teamId }, data: { settings: merged } });
   }
 
-  // Soft delete
-  async deleteTeam(teamId: string) {
+  // Soft delete — yalnızca takım kurucusu silebilir
+  async deleteTeam(teamId: string, requesterId: string) {
+    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { ownerId: true } });
+    if (!team) throw new Error('Takım bulunamadı.');
+    if (team.ownerId !== requesterId) throw new Error('Takımı yalnızca kurucu silebilir.');
     return prisma.team.update({ where: { id: teamId }, data: { isDeleted: true } });
   }
 }

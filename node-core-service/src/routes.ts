@@ -11,8 +11,13 @@ const subscriptionRoutes  = require('./modules/subscriptions/subscription.routes
 const paymentRoutes       = require('./modules/payments/payment.routes');
 const notificationRoutes  = require('./modules/notifications/notification.routes');
 const requestRoutes       = require('./modules/requests/request.routes');
+const uploadRoutes        = require('./modules/uploads/upload.routes');
 
 const mainRouter = Router();
+
+mainRouter.get('/health', (_req: any, res: any) => {
+  res.status(200).json({ status: 'OK', service: 'Node Core Service', timestamp: new Date() });
+});
 
 mainRouter.use('/auth',          authRoutes);
 mainRouter.use('/users',         userRoutes);
@@ -26,6 +31,7 @@ mainRouter.use('/subscriptions', subscriptionRoutes);
 mainRouter.use('/payments',      paymentRoutes);
 mainRouter.use('/notifications', notificationRoutes);
 mainRouter.use('/requests',      requestRoutes);
+mainRouter.use('/uploads',       uploadRoutes);
 
 module.exports = mainRouter;
 export {};

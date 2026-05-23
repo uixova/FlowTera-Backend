@@ -25,5 +25,8 @@ router.post('/:teamId/members',           authenticate, teamGuard, adminGuard, m
 router.put('/:teamId/members/:userId',    authenticate, teamGuard, adminGuard, memberController.updateMember);
 router.delete('/:teamId/members/:userId', authenticate, teamGuard, adminGuard, memberController.removeMember);
 
+// Kendi isteğiyle ayrılma — adminGuard yok, her üye deneyebilir
+router.delete('/:teamId/leave', authenticate, teamGuard, memberController.leaveTeam);
+
 module.exports = router;
 export {};

@@ -4,7 +4,7 @@ const { authenticate } = require('../../middlewares/authenticate');
 
 const router = Router();
 
-router.get('/', userController.listAll);
+router.get('/', authenticate, userController.listAll);
 router.get('/:id', authenticate, userController.getProfile);
 router.put('/:id', authenticate, userController.updateProfile);
 router.patch('/:id/settings', authenticate, userController.updateSettings);

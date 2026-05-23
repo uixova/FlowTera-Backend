@@ -54,9 +54,11 @@ class TeamController {
 
   async deleteTeam(req: any, res: any, next: any) {
     try {
-      await teamService.deleteTeam(req.params.teamId);
+      await teamService.deleteTeam(req.params.teamId, req.user.userId);
       res.status(200).json({ status: 'OK', message: 'Takım başarıyla silindi.' });
-    } catch (error) { next(error); }
+    } catch (error: any) {
+      res.status(400).json({ status: 'ERROR', message: error.message });
+    }
   }
 }
 

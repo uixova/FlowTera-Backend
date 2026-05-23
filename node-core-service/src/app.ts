@@ -9,9 +9,10 @@ const morgan      = require('morgan');
 const compression = require('compression');
 const dotenv      = require('dotenv');
 
-const mainRouter       = require('./routes');
-const { errorHandler } = require('./middlewares/errorHandler');
-const { notFound }     = require('./middlewares/notFound');
+const mainRouter           = require('./routes');
+const { errorHandler }     = require('./middlewares/errorHandler');
+const { notFound }         = require('./middlewares/notFound');
+const { sanitizeBody }     = require('./middlewares/sanitize');
 
 dotenv.config();
 
@@ -34,9 +35,10 @@ application.use(cors({
   credentials: true,
 }));
 
-// Stripe webhook raw body'ye ihtiyaç duyar
+// Stripe webhook raw body'ye ihtiyaç duyar; body size 512 KB ile sınırlı
 application.use(
   express.json({
+    limit: '512kb',
     verify: (req: any, _res: any, buf: Buffer) => {
       if (req.originalUrl?.includes('/payments/webhook')) {
         req.rawBody = buf;
@@ -44,7 +46,10 @@ application.use(
     },
   })
 );
-application.use(express.urlencoded({ extended: true }));
+application.use(express.urlencoded({ extended: true, limit: '512kb' }));
+
+// XSS ve SQL injection temizleme — Zod validation'dan önce çalışır
+application.use(sanitizeBody);
 
 if (process.env.NODE_ENV === 'development') {
   application.use(morgan('dev'));

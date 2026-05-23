@@ -11,7 +11,7 @@ const mapUser = (user: any) => {
     settings:     user.settings     || DEFAULT_SETTINGS,
     role: (teamMemberships || []).map((m: any) => ({
       teamId:      m.teamId,
-      roleName:    m.roleName,
+      role:        (m.roleName || 'Member').toLowerCase(),
       permissions: m.permissions || [],
     })),
     teams: (teamMemberships || []).map((m: any) => m.teamId),
@@ -28,27 +28,33 @@ class UserService {
     return mapUser(user);
   }
 
-  async getAllUsers(page = 1, pageSize = DEFAULT_PAGE_SIZE) {
+  async getAllUsers(page = 1, pageSize = DEFAULT_PAGE_SIZE, teamId?: string) {
     const skip = (page - 1) * pageSize;
+
+    // teamId varsa sadece o takımın üyelerini döner — veri sızıntısı önlenir
+    const where: any = { isDeleted: false };
+    if (teamId) {
+      where.teamMemberships = { some: { teamId } };
+    }
 
     const [users, totalCount] = await Promise.all([
       prisma.user.findMany({
-        where:   { isDeleted: false },
+        where,
         skip,
         take:    pageSize,
         orderBy: { joinedDate: 'desc' },
         include: { teamMemberships: true },
       }),
-      prisma.user.count({ where: { isDeleted: false } }),
+      prisma.user.count({ where }),
     ]);
 
     return {
       data:       users.map(mapUser),
-      hasMore:    totalCount > skip + pageSize,
-      totalCount,
-      totalPages: Math.ceil(totalCount / pageSize),
+      total:      totalCount,
       page,
       pageSize,
+      hasMore:    totalCount > skip + pageSize,
+      totalPages: Math.ceil(totalCount / pageSize),
     };
   }
 

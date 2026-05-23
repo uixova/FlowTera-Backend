@@ -1,20 +1,38 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import { correlationId }  from './middlewares/correlationId';
-import { requestLogger }  from './middlewares/requestLogger';
-import { rateLimiter }    from './middlewares/rateLimiter';
-import { errorHandler }   from './middlewares/errorHandler';
-import { nodeProxy }      from './proxy/nodeProxy';
-import { pythonProxy }    from './proxy/pythonProxy';
+import { correlationId }    from './middlewares/correlationId';
+import { requestLogger }    from './middlewares/requestLogger';
+import { rateLimiter }      from './middlewares/rateLimiter';
+import { errorHandler }     from './middlewares/errorHandler';
+import { sanitizeRequest }  from './middlewares/sanitize';
+import { nodeProxy }        from './proxy/nodeProxy';
+import { pythonProxy }      from './proxy/pythonProxy';
+
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '*')
+  .split(',').map(o => o.trim());
 
 const app = express();
 
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'"],
+      objectSrc:  ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+app.use(cors({
+  origin: ALLOWED_ORIGINS.includes('*') ? '*' : ALLOWED_ORIGINS,
+  credentials: true,
+}));
 app.use(correlationId);
 app.use(requestLogger);
 app.use(rateLimiter);
+app.use(sanitizeRequest);
 
 // Sağlık kontrolü — proxy olmadan doğrudan yanıt
 app.get('/health', (_req, res) => {

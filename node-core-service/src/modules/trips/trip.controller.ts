@@ -23,14 +23,15 @@ class TripController {
 
   async createTrip(req: any, res: any, next: any) {
     try {
-      const { title, category, destination, vehicle, date, amount, currency, currencySymbol, teamId } = req.body;
-      if (!title || !category || !destination || !vehicle || !date || !amount || !currency || !currencySymbol || !teamId)
+      const { title, category, destination, vehicle, amount, currency, teamId } = req.body;
+      if (!title || !category || !destination || !vehicle || !amount || !currency || !teamId)
         return res.status(400).json({ status: 'ERROR', message: 'Zorunlu alanlar eksik.' });
 
       const createdById = req.user?.userId || req.body.userId;
       if (!createdById) return res.status(400).json({ status: 'ERROR', message: 'Kullanıcı kimliği bulunamadı.' });
 
-      const trip = await tripService.createTrip(req.body, createdById);
+      const role = req.teamMember?.roleName || 'Member';
+      const trip = await tripService.createTrip(req.body, createdById, role);
       return res.status(201).json({ status: 'OK', data: trip });
     } catch (error) { next(error); }
   }

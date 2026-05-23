@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.middlewares.auth import InternalAuthMiddleware
 from app.middlewares.error_handler import global_exception_handler
 from app.config import settings
-from app.routes import ocr, analysis
+from app.routes import ocr, analysis, reports
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,7 +38,9 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 app.include_router(ocr.router,      prefix="/ml")
 app.include_router(analysis.router, prefix="/ml")
+app.include_router(reports.router,  prefix="/ml")
 
 @app.get("/health")
+@app.get("/ml/health")
 def health():
     return {"status": "OK", "service": "python-ml-service"}

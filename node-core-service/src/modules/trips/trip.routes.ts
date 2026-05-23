@@ -3,18 +3,20 @@ const tripController   = require('./trip.controller');
 const { authenticate } = require('../../middlewares/authenticate');
 const { teamGuard }    = require('../../middlewares/teamGuard');
 const { adminGuard }   = require('../../middlewares/adminGuard');
+const { validate }     = require('../../middlewares/validate');
+const {
+  createTripSchema,
+  updateTripSchema,
+  updateTripStatusSchema,
+} = require('./trip.validators');
 
 const router = Router();
 
-// teamId zorunlu (req.query.teamId)
 router.get('/',              authenticate, teamGuard, tripController.getTripsByTeam);
-// ID bazlı — servis katmanı sahipliği doğrular
 router.get('/:id',          authenticate, tripController.getTripById);
-// teamId body'de gelir (req.body.teamId)
-router.post('/',            authenticate, teamGuard, tripController.createTrip);
-router.put('/:id',          authenticate, tripController.updateTrip);
-// Durum değişikliği — teamId body'de, sadece Admin yapabilir
-router.patch('/:id/status', authenticate, teamGuard, adminGuard, tripController.updateTripStatus);
+router.post('/',            authenticate, teamGuard, validate(createTripSchema), tripController.createTrip);
+router.put('/:id',          authenticate, validate(updateTripSchema), tripController.updateTrip);
+router.patch('/:id/status', authenticate, teamGuard, adminGuard, validate(updateTripStatusSchema), tripController.updateTripStatus);
 router.delete('/:id',       authenticate, tripController.deleteTrip);
 
 module.exports = router;

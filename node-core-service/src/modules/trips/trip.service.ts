@@ -40,8 +40,10 @@ class TripService {
 
     return {
       data:       trips.map(enrichTrip),
+      total:      totalCount,
+      page,
+      pageSize,
       hasMore:    totalCount > skip + pageSize,
-      totalCount,
       totalPages: Math.ceil(totalCount / pageSize),
     };
   }
@@ -57,20 +59,20 @@ class TripService {
   }
 
   // Yeni seyahat oluştur
-  async createTrip(input: any, createdById: string) {
+  async createTrip(input: any, createdById: string, role: string = 'Member') {
     const trip = await prisma.trip.create({
       data: {
         title:          input.title,
         category:       input.category,
         destination:    input.destination,
         vehicle:        input.vehicle,
-        date:           new Date(input.date),
+        date:           input.date ? new Date(input.date) : new Date(),
         startDate:      input.startDate ? new Date(input.startDate) : null,
         endDate:        input.endDate   ? new Date(input.endDate)   : null,
         duration:       input.duration  || null,
         amount:         Number(input.amount),
         currency:       input.currency,
-        currencySymbol: input.currencySymbol,
+        currencySymbol: input.currencySymbol || '',
         localAmount:    input.localAmount ? Number(input.localAmount) : null,
         localCurrency:  input.localCurrency || null,
         localSymbol:    input.localSymbol   || null,
@@ -87,13 +89,6 @@ class TripService {
 
     const enriched   = enrichTrip(trip);
     const amountStr  = `${input.currency} ${Number(input.amount).toLocaleString()}`;
-
-    // Oluşturan kişinin rolünü bul
-    const member = await prisma.teamMember.findUnique({
-      where:  { userId_teamId: { userId: createdById, teamId: input.teamId } },
-      select: { roleName: true },
-    }).catch(() => null);
-    const role = member?.roleName || 'Member';
 
     // TeamLog — seyahat eklendi
     logs.logTripCreated(input.teamId, enriched.userName, role, input.title, input.destination, amountStr);
@@ -134,16 +129,18 @@ class TripService {
     rejectionReason?: string,
     teamId?:          string,
   ) {
-    // Sahiplik cross-check: seyahat gerçekten o takıma ait mi?
-    const existing = await prisma.trip.findUnique({ where: { id }, select: { teamId: true } });
-    if (!existing) throw new Error('Seyahat bulunamadı.');
-    if (teamId && existing.teamId !== teamId) throw new Error('Bu seyahat belirtilen takıma ait değil.');
-
-    const trip = await prisma.trip.update({
-      where:   { id },
-      data:    { status, rejectionReason: rejectionReason || null },
-      include: { createdBy: createdBySelect },
-    });
+    // Cross-check WHERE'e gömülü — tek atomik sorgu, TOCTOU yok
+    let trip: any;
+    try {
+      trip = await prisma.trip.update({
+        where:   { id, ...(teamId ? { teamId } : {}) },
+        data:    { status, rejectionReason: rejectionReason || null },
+        include: { createdBy: createdBySelect },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2025') throw new Error('Seyahat kaydı bulunamadı veya erişim yetkiniz yok.');
+      throw err;
+    }
 
     const enriched  = enrichTrip(trip);
     const amountStr = `${trip.currency} ${Number(trip.amount).toLocaleString()}`;

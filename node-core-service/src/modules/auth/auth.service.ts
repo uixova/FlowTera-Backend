@@ -17,7 +17,7 @@ const mapUser = (user: any) => {
     settings:     user.settings     || DEFAULT_SETTINGS,
     role: (teamMemberships || []).map((m: any) => ({
       teamId:      m.teamId,
-      roleName:    m.roleName,
+      role:        (m.roleName || 'Member').toLowerCase(),
       permissions: m.permissions || [],
     })),
     teams: (teamMemberships || []).map((m: any) => m.teamId),

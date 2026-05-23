@@ -8,17 +8,23 @@ class MemberController {
       if (!roleName)
         return res.status(400).json({ status: 'ERROR', message: 'roleName zorunludur.' });
 
-      const result = await memberService.updateMember(teamId, userId, roleName, permissions || []);
+      const adminName = req.user?.name || req.user?.email || 'Admin';
+      const result = await memberService.updateMember(teamId, userId, roleName, permissions || [], adminName);
       res.status(200).json({ status: 'OK', data: result });
-    } catch (error) { next(error); }
+    } catch (error: any) {
+      res.status(400).json({ status: 'ERROR', message: error.message });
+    }
   }
 
   async removeMember(req: any, res: any, next: any) {
     try {
       const { teamId, userId } = req.params;
-      const result = await memberService.removeMember(teamId, userId);
+      const adminName = req.user?.name || req.user?.email || 'Admin';
+      const result = await memberService.removeMember(teamId, userId, adminName);
       res.status(200).json({ status: 'OK', ...result });
-    } catch (error) { next(error); }
+    } catch (error: any) {
+      res.status(400).json({ status: 'ERROR', message: error.message });
+    }
   }
 
   async addMember(req: any, res: any, next: any) {
@@ -28,8 +34,21 @@ class MemberController {
       if (!userId)
         return res.status(400).json({ status: 'ERROR', message: 'userId zorunludur.' });
 
-      const result = await memberService.addMember(teamId, userId, roleName, permissions);
+      const adminId   = req.user?.userId || '';
+      const adminName = req.user?.name || req.user?.email || 'Admin';
+      const result = await memberService.addMember(teamId, userId, roleName, permissions, adminId, adminName);
       res.status(201).json({ status: 'OK', data: result });
+    } catch (error: any) {
+      res.status(400).json({ status: 'ERROR', message: error.message });
+    }
+  }
+
+  async leaveTeam(req: any, res: any, next: any) {
+    try {
+      const { teamId } = req.params;
+      const userId     = req.user.userId;
+      const result     = await memberService.leaveTeam(teamId, userId);
+      res.status(200).json({ status: 'OK', ...result });
     } catch (error: any) {
       res.status(400).json({ status: 'ERROR', message: error.message });
     }

@@ -2,6 +2,41 @@ const prisma   = require('../../config/prisma');
 const { DEFAULT_PAGE_SIZE } = require('../../config/constants');
 const logs     = require('../../utils/logWriter');
 const notify   = require('../../utils/notifyTrigger');
+const { keyToUrl } = require('../../utils/s3');
+
+const PYTHON_ML_URL    = process.env.PYTHON_ML_URL    || 'http://localhost:8000';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
+
+// Harcama raporu PDF üretip S3'e yükler, report key döner
+async function _generateAndUploadReport(expense: any, teamName: string): Promise<string | null> {
+  try {
+    const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+    const BUCKET = process.env.AWS_S3_BUCKET  || '';
+    const REGION = process.env.AWS_S3_REGION  || 'eu-central-1';
+    if (!BUCKET) return null;
+
+    const res = await fetch(`${PYTHON_ML_URL}/ml/reports/expense`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Internal-API-Key': INTERNAL_API_KEY },
+      body:    JSON.stringify({ ...expense, team_name: teamName }),
+    });
+    if (!res.ok) return null;
+
+    const pdfBytes = await res.arrayBuffer();
+    const key      = `teams/${expense.teamId}/reports/${expense.id}.pdf`;
+
+    const s3 = new S3Client({ region: REGION });
+    await s3.send(new PutObjectCommand({
+      Bucket:      BUCKET,
+      Key:         key,
+      Body:        Buffer.from(pdfBytes),
+      ContentType: 'application/pdf',
+    }));
+    return key;
+  } catch {
+    return null;
+  }
+}
 
 // Veri Zenginleştirici
 const createdBySelect = {
@@ -13,8 +48,14 @@ const enrichExpense = (expense: any) => {
   const isDeleted = creator?.isDeleted || false;
   const sub       = creator?.subscription as any;
 
+  // receipt ve report alanları S3 key saklar; tam URL hesaplanır
+  const receiptUrl = expense.receipt ? keyToUrl(expense.receipt) : null;
+  const reportUrl  = expense.report  ? keyToUrl(expense.report)  : null;
+
   return {
     ...expense,
+    receiptUrl,
+    reportUrl,
     createdBy:  { id: expense.createdById, name: isDeleted ? 'DeletedUser' : (creator?.name || 'Unknown') },
     user:       isDeleted ? 'DeletedUser' : (creator?.name || 'Unknown'),
     userAvatar: isDeleted ? null : (creator?.avatar || null),
@@ -40,8 +81,10 @@ class ExpenseService {
 
     return {
       data:       expenses.map(enrichExpense),
+      total:      totalCount,
+      page,
+      pageSize,
       hasMore:    totalCount > skip + pageSize,
-      totalCount,
       totalPages: Math.ceil(totalCount / pageSize),
     };
   }
@@ -57,7 +100,7 @@ class ExpenseService {
   }
 
   // Yeni harcama oluştur
-  async createExpense(input: any, createdById: string) {
+  async createExpense(input: any, createdById: string, role: string = 'Member') {
     // Takım ayarlarından otomatik onay kontrolü
     const team     = await prisma.team.findUnique({ where: { id: input.teamId } });
     const settings = (team?.settings as any) || {};
@@ -68,10 +111,10 @@ class ExpenseService {
         title:          input.title,
         category:       input.category,
         merchant:       input.merchant,
-        date:           new Date(input.date),
+        date:           input.date ? new Date(input.date) : new Date(),
         amount:         Number(input.amount),
         currency:       input.currency,
-        currencySymbol: input.currencySymbol,
+        currencySymbol: input.currencySymbol || '',
         localAmount:    input.localAmount    ? Number(input.localAmount) : null,
         localCurrency:  input.localCurrency  || null,
         localSymbol:    input.localSymbol    || null,
@@ -79,6 +122,9 @@ class ExpenseService {
         paymentMethod:  input.paymentMethod  || null,
         desc:           input.desc           || null,
         icon:           input.icon           || null,
+        image:          input.image          || null,
+        receipt:        input.receipt        || null,
+        isReported:     Boolean(input.isReported),
         status:         autoApprove ? 'approved' : 'pending',
         createdById,
         teamId:         input.teamId,
@@ -86,18 +132,24 @@ class ExpenseService {
       include: { createdBy: createdBySelect },
     });
 
-    const enriched   = enrichExpense(expense);
-    const amountStr  = `${input.currency} ${Number(input.amount).toLocaleString()}`;
-
-    // Oluşturan kişinin rolünü TeamMember tablosundan bul
-    const member = await prisma.teamMember.findUnique({
-      where:  { userId_teamId: { userId: createdById, teamId: input.teamId } },
-      select: { roleName: true },
-    }).catch(() => null);
-    const role = member?.roleName || 'Member';
-
-    // TeamLog — harcama eklendi
+    const enriched  = enrichExpense(expense);
+    const amountStr = `${input.currency} ${Number(input.amount).toLocaleString()}`;
     logs.logExpenseCreated(input.teamId, enriched.user, role, input.title, amountStr);
+
+    // isReported=true → arka planda PDF rapor üret ve S3'e yükle
+    if (input.isReported) {
+      _generateAndUploadReport(
+        { ...expense, user: enriched.user },
+        team?.name || 'FlowTera',
+      ).then((reportKey: string | null) => {
+        if (reportKey) {
+          prisma.expense.update({
+            where: { id: expense.id },
+            data:  { report: reportKey },
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
 
     return enriched;
   }
@@ -133,16 +185,18 @@ class ExpenseService {
     rejectionReason?: string,
     teamId?:          string,
   ) {
-    // Sahiplik cross-check: harcama gerçekten o takıma ait mi?
-    const existing = await prisma.expense.findUnique({ where: { id }, select: { teamId: true } });
-    if (!existing) throw new Error('Harcama bulunamadı.');
-    if (teamId && existing.teamId !== teamId) throw new Error('Bu harcama belirtilen takıma ait değil.');
-
-    const expense = await prisma.expense.update({
-      where:   { id },
-      data:    { status, rejectionReason: rejectionReason || null },
-      include: { createdBy: createdBySelect },
-    });
+    // Cross-check WHERE'e gömülü — tek atomik sorgu, TOCTOU yok
+    let expense: any;
+    try {
+      expense = await prisma.expense.update({
+        where:   { id, ...(teamId ? { teamId } : {}) },
+        data:    { status, rejectionReason: rejectionReason || null },
+        include: { createdBy: createdBySelect },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2025') throw new Error('Harcama bulunamadı veya erişim yetkiniz yok.');
+      throw err;
+    }
 
     const enriched  = enrichExpense(expense);
     const amountStr = `${expense.currency} ${Number(expense.amount).toLocaleString()}`;
