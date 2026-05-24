@@ -94,14 +94,37 @@ class TeamService {
       throw new Error(`Plan limitiniz aşıldı. En fazla ${maxTeams} takım oluşturabilirsiniz.`);
     }
 
+    // Kullanıcının planını DB'den bul — planContext'i settings'e göm
+    let planContext: Record<string, any> = {};
+    try {
+      const linkedPlan = await prisma.plan.findFirst({
+        where: {
+          OR: [
+            sub.planId ? { id: sub.planId } : undefined,
+            sub.badge  ? { badge: sub.badge } : undefined,
+            sub.plan   ? { badge: sub.plan.toLowerCase() } : undefined,
+          ].filter(Boolean),
+        },
+      });
+      if (linkedPlan) {
+        planContext = {
+          planId:            linkedPlan.id,
+          planName:          linkedPlan.name,
+          planBadge:         linkedPlan.badge,
+          maxMembersAllowed: parseInt((linkedPlan.promise as any)?.TeamMemberLimit || '5', 10) || (linkedPlan as any).maxMembersPerTeam || 5,
+        };
+      }
+    } catch { /* non-critical */ }
+
     return prisma.$transaction(async (tx: any) => {
+      const baseSettings  = input.settings || {};
       const team = await tx.team.create({
         data: {
           name:     input.name,
           category: input.category,
           image:    input.image || null,
           ownerId,
-          settings: input.settings || {},
+          settings: { ...baseSettings, planContext },
           membersCount: 1,
         },
       });

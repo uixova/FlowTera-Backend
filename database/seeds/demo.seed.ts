@@ -3,52 +3,49 @@ import { PrismaClient } from '@prisma/client';
 export async function seedDemo(prisma: PrismaClient) {
   console.log('Seeding Demo Data (Users, Teams, Expenses)...');
 
-  // 1. Kullanıcıyı Oluştur
-  const uixova = await prisma.user.create({
+  const adminUser = await prisma.user.create({
     data: {
-      name: "UIXOVA",
-      username: "uixova",
-      email: "uixova@flowtera.in",
-      password: "hashed_password_1", // Gerçek senaryoda bcrypt ile hashlenecek
-      phone: "+90 555 123 4567",
-      settings: { theme: "dark", language: "English" },
-    }
+      name: 'FlowTera Admin',
+      username: 'flowtera_admin',
+      email: 'admin@flowtera.app',
+      password: 'hashed_password_placeholder', // Replace with bcrypt hash before use
+      settings: { theme: 'light', language: 'tr' },
+    },
   });
 
-  // 2. Takımı Oluştur
   const team1 = await prisma.team.create({
     data: {
-      name: "Main Development Team",
-      category: "Software Development",
-      ownerId: uixova.id,
-      settings: { currency: "USD", workspaceType: "Corporate" }
-    }
+      name: 'Demo Team',
+      category: 'General',
+      ownerId: adminUser.id,
+      settings: { currency: 'USD', workspaceType: 'Corporate' },
+    },
   });
 
-  // 3. Kullanıcıyı Takıma Bağla (Yetkilerle)
   await prisma.teamMember.create({
     data: {
-      userId: uixova.id,
-      teamId: team1.id,
-      roleName: "Admin",
-      permissions: ["all"]
-    }
+      userId:      adminUser.id,
+      teamId:      team1.id,
+      roleName:    'Admin',
+      permissions: [],
+    },
   });
 
-  // 4. Test Harcaması Ekle
   await prisma.expense.create({
     data: {
-      title: "Server Hosting",
-      category: "Infrastructure",
-      merchant: "DigitalOcean",
-      date: new Date("2026-03-08T00:00:00Z"),
-      amount: 45.00,
-      currency: "USD",
-      currencySymbol: "$",
-      status: "approved",
-      createdById: uixova.id,
-      teamId: team1.id,
-      exchangeRates: { USD: 1, TRY: 35.12 }
-    }
+      title:         'Server Hosting',
+      category:      'Infrastructure',
+      merchant:      'DigitalOcean',
+      date:          new Date('2026-03-08T00:00:00Z'),
+      amount:        45.00,
+      currency:      'USD',
+      currencySymbol: '$',
+      status:        'approved',
+      createdById:   adminUser.id,
+      teamId:        team1.id,
+      exchangeRates: { USD: 1, TRY: 35.12 },
+    },
   });
+
+  console.log('✅ Demo seed complete. admin:', adminUser.id);
 }

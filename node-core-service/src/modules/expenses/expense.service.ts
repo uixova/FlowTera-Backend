@@ -65,18 +65,23 @@ const enrichExpense = (expense: any) => {
 
 class ExpenseService {
   // Takıma ait harcamaları sayfalı getir
-  async getAllExpenses(teamId: string, page = 1, pageSize = DEFAULT_PAGE_SIZE) {
+  async getAllExpenses(teamId: string, page = 1, pageSize = DEFAULT_PAGE_SIZE, startDate?: string, endDate?: string) {
     const skip = (page - 1) * pageSize;
+
+    const dateFilter: any = {};
+    if (startDate) dateFilter.gte = new Date(startDate);
+    if (endDate)   dateFilter.lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+    const where: any = { teamId, ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}) };
 
     const [expenses, totalCount] = await Promise.all([
       prisma.expense.findMany({
-        where:   { teamId },
+        where,
         skip,
         take:    pageSize,
         orderBy: { date: 'desc' },
         include: { createdBy: createdBySelect },
       }),
-      prisma.expense.count({ where: { teamId } }),
+      prisma.expense.count({ where }),
     ]);
 
     return {

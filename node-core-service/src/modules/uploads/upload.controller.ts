@@ -1,5 +1,5 @@
 const uploadService = require('./upload.service');
-const { getPresignedDownloadUrl } = require('../../utils/s3');
+const { getPresignedDownloadUrl, getAvatarUploadUrl, getTeamImageUploadUrl } = require('../../utils/s3');
 
 class UploadController {
   // GET /uploads/presigned?ext=jpg&teamId=xxx
@@ -30,6 +30,33 @@ class UploadController {
       }
       const viewUrl = await getPresignedDownloadUrl(key, 300);
       return res.status(200).json({ status: 'OK', data: { viewUrl, expiresIn: 300 } });
+    } catch (error) { next(error); }
+  }
+
+  // GET /uploads/presigned-avatar?ext=png&userId=xxx
+  async getAvatarPresignedUrl(req: any, res: any, next: any) {
+    try {
+      const { ext } = req.query;
+      const userId  = req.user?.userId;
+      if (!ext || !userId) return res.status(400).json({ status: 'ERROR', message: 'ext zorunludur.' });
+      const allowed = ['jpg', 'jpeg', 'png', 'webp'];
+      if (!allowed.includes((ext as string).toLowerCase()))
+        return res.status(400).json({ status: 'ERROR', message: 'Yalnızca jpg/png/webp.' });
+      const result = await getAvatarUploadUrl(userId, ext as string);
+      return res.status(200).json({ status: 'OK', data: result });
+    } catch (error) { next(error); }
+  }
+
+  // GET /uploads/presigned-team-image?ext=png&teamId=xxx
+  async getTeamImagePresignedUrl(req: any, res: any, next: any) {
+    try {
+      const { ext, teamId } = req.query;
+      if (!ext || !teamId) return res.status(400).json({ status: 'ERROR', message: 'ext ve teamId zorunludur.' });
+      const allowed = ['jpg', 'jpeg', 'png', 'webp'];
+      if (!allowed.includes((ext as string).toLowerCase()))
+        return res.status(400).json({ status: 'ERROR', message: 'Yalnızca jpg/png/webp.' });
+      const result = await getTeamImageUploadUrl(teamId as string, ext as string);
+      return res.status(200).json({ status: 'OK', data: result });
     } catch (error) { next(error); }
   }
 

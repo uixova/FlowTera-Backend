@@ -9,9 +9,11 @@ class ExpenseController {
       const { teamId } = req.query;
       if (!teamId) return res.status(400).json({ status: 'ERROR', message: 'teamId zorunludur.' });
 
-      const page     = Math.max(1, parseInt(req.query.page     as string) || 1);
-      const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(req.query.pageSize as string) || 20));
-      const result   = await expenseService.getAllExpenses(teamId, page, pageSize);
+      const page      = Math.max(1, parseInt(req.query.page     as string) || 1);
+      const pageSize  = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(req.query.pageSize as string) || 20));
+      const startDate = req.query.startDate as string | undefined;
+      const endDate   = req.query.endDate   as string | undefined;
+      const result    = await expenseService.getAllExpenses(teamId, page, pageSize, startDate, endDate);
       return res.status(200).json({ status: 'OK', ...result });
     } catch (error) { next(error); }
   }

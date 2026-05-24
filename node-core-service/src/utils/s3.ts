@@ -23,6 +23,30 @@ const extToMime: Record<string, string> = {
   pdf:  'application/pdf',
 };
 
+// User avatar presigned upload URL
+const getAvatarUploadUrl = async (userId: string, ext: string): Promise<{ uploadUrl: string; fileUrl: string; key: string }> => {
+  if (!BUCKET) throw new Error('AWS_S3_BUCKET yapılandırılmamış.');
+  const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const key     = `users/${userId}/avatar.${safeExt}`;
+  const mime    = extToMime[safeExt] || 'image/jpeg';
+  const command = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: mime });
+  const uploadUrl = await getSignedUrl(s3, command, { expiresIn: UPLOAD_EXPIRES });
+  const fileUrl   = `${S3_BASE_URL}/${key}`;
+  return { uploadUrl, fileUrl, key };
+};
+
+// Team image presigned upload URL
+const getTeamImageUploadUrl = async (teamId: string, ext: string): Promise<{ uploadUrl: string; fileUrl: string; key: string }> => {
+  if (!BUCKET) throw new Error('AWS_S3_BUCKET yapılandırılmamış.');
+  const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const key     = `teams/${teamId}/image.${safeExt}`;
+  const mime    = extToMime[safeExt] || 'image/jpeg';
+  const command = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: mime });
+  const uploadUrl = await getSignedUrl(s3, command, { expiresIn: UPLOAD_EXPIRES });
+  const fileUrl   = `${S3_BASE_URL}/${key}`;
+  return { uploadUrl, fileUrl, key };
+};
+
 // Presigned PUT URL — istemci doğrudan S3'e yükler (sunucu araya girmez)
 // Döner: { uploadUrl, fileUrl, key }
 const getPresignedUploadUrl = async (teamId: string, ext: string): Promise<{ uploadUrl: string; fileUrl: string; key: string }> => {
@@ -72,5 +96,5 @@ const deleteS3Object = async (key: string): Promise<void> => {
   }
 };
 
-module.exports = { getPresignedUploadUrl, getPresignedDownloadUrl, extractKeyFromUrl, deleteS3Object, keyToUrl, S3_BASE_URL };
+module.exports = { getPresignedUploadUrl, getAvatarUploadUrl, getTeamImageUploadUrl, getPresignedDownloadUrl, extractKeyFromUrl, deleteS3Object, keyToUrl, S3_BASE_URL };
 export {};

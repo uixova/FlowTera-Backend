@@ -14,6 +14,25 @@ const SKIP_OTP     = process.env.SKIP_EMAIL_OTP === 'true';
 const generateOtp = (): string =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
+// payload.plan is either a plan object (from frontend) or null/string
+const buildSubscription = (plan: any): Record<string, any> => {
+  if (plan && typeof plan === 'object' && plan.id) {
+    return {
+      planId:       plan.id,
+      plan:         plan.badge || (plan.name || '').toLowerCase(),
+      badge:        plan.badge || null,
+      price:        plan.price || 0,
+      currency:     plan.currency || 'USD',
+      status:       'active',
+      startedAt:    new Date().toISOString(),
+      teamLimit:    plan.promise?.teamLimit    || null,
+      memberLimit:  plan.promise?.memberLimit  || null,
+      feature_keys: plan.feature_keys || [],
+    };
+  }
+  return DEFAULT_SUBSCRIPTION;
+};
+
 const mapUser = (user: any) => {
   const { password, stripeCustomerId, teamMemberships, ...rest } = user;
   return {
@@ -22,7 +41,7 @@ const mapUser = (user: any) => {
     settings:     user.settings     || DEFAULT_SETTINGS,
     role: (teamMemberships || []).map((m: any) => ({
       teamId:      m.teamId,
-      role:        (m.roleName || 'Member').toLowerCase(),
+      roleName:    m.roleName || 'Member',
       permissions: m.permissions || [],
     })),
     teams: (teamMemberships || []).map((m: any) => m.teamId),
@@ -79,7 +98,7 @@ class AuthService {
           age:          age              || null,
           password:     hashedPassword,
           emailVerified: false,
-          subscription: payload.subscription || DEFAULT_SUBSCRIPTION,
+          subscription: buildSubscription(payload.plan),
           settings:     DEFAULT_SETTINGS,
           status:       'active',
         },
@@ -98,7 +117,7 @@ class AuthService {
       birthDate: birthDate ? birthDate.toISOString() : null,
       age,
       hashedPassword,
-      subscription: payload.subscription || DEFAULT_SUBSCRIPTION,
+      subscription: buildSubscription(payload.plan),
       plan: payload.plan || null,
     };
 
@@ -162,7 +181,7 @@ class AuthService {
         age:          p.age      || null,
         password:     p.hashedPassword,
         emailVerified: true,
-        subscription: p.subscription || DEFAULT_SUBSCRIPTION,
+        subscription: buildSubscription(p.plan),
         settings:     DEFAULT_SETTINGS,
         status:       'active',
       },
@@ -303,7 +322,7 @@ class AuthService {
         age,
         password:     hashedPassword,
         emailVerified: false,
-        subscription: payload.subscription || DEFAULT_SUBSCRIPTION,
+        subscription: buildSubscription(payload.plan),
         settings:     DEFAULT_SETTINGS,
         status:       'active',
       },
