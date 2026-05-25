@@ -1,4 +1,5 @@
-const uploadService = require('./upload.service');
+const uploadService      = require('./upload.service');
+const subscriptionService = require('../subscriptions/subscription.service');
 const { getPresignedDownloadUrl, getAvatarUploadUrl, getTeamImageUploadUrl } = require('../../utils/s3');
 
 class UploadController {
@@ -60,15 +61,44 @@ class UploadController {
     } catch (error) { next(error); }
   }
 
-  // POST /uploads/analyze-receipt
-  // Body: { key: string } — S3 key ile fatura OCR analizi
+  // POST /uploads/analyze-receipt — OCR analysis via Python ML service
+  // Body: { key: string } — S3 key of the uploaded receipt image
   async analyzeReceipt(req: any, res: any, next: any) {
     try {
       const { key } = req.body;
       if (!key || typeof key !== 'string') {
         return res.status(400).json({ status: 'ERROR', message: 'key zorunludur.' });
       }
+
       const result = await uploadService.analyzeReceipt(key);
+
+      // Increment OCR usage counter in the user's subscription (fire-and-forget)
+      const userId = req.user?.userId;
+      if (userId) {
+        subscriptionService.incrementUsage(userId, 'ocr').catch(() => {});
+      }
+
+      return res.status(200).json({ status: 'OK', data: result });
+    } catch (error) { next(error); }
+  }
+
+  // POST /uploads/ocr-direct — Direct file upload OCR (bypasses S3)
+  // Multipart form-data: file field with the receipt image or PDF
+  async analyzeReceiptDirect(req: any, res: any, next: any) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ status: 'ERROR', message: 'Dosya zorunludur (multipart/form-data, alan adı: file).' });
+      }
+
+      const { buffer, originalname, mimetype } = req.file;
+      const result = await uploadService.analyzeReceiptDirect(buffer, originalname, mimetype);
+
+      // Increment OCR usage counter — same as analyzeReceipt (fire-and-forget)
+      const userId = req.user?.userId;
+      if (userId) {
+        subscriptionService.incrementUsage(userId, 'ocr').catch(() => {});
+      }
+
       return res.status(200).json({ status: 'OK', data: result });
     } catch (error) { next(error); }
   }

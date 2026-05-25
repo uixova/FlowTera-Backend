@@ -83,10 +83,28 @@ class SubscriptionService {
     return { success: true, message: 'Abonelik iptal edildi. Free plana geçildi.', subscription: freeSub };
   }
 
-  // Feature erişim kontrolü
+  // Feature access check
   async hasFeature(userId: string, featureKey: string): Promise<boolean> {
     const sub = await this.getUserSubscription(userId);
     return sub?.feature_keys?.includes(featureKey) ?? false;
+  }
+
+  // Increment a usage counter in user.subscription.usage
+  async incrementUsage(userId: string, field: 'ocr' | 'aiAnaliz'): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where:  { id: userId, isDeleted: false },
+      select: { subscription: true },
+    });
+    if (!user) return;
+
+    const sub   = (user.subscription as any) || {};
+    const usage = { ...(sub.usage || { ocr: 0, aiAnaliz: 0 }) };
+    usage[field] = (usage[field] ?? 0) + 1;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data:  { subscription: { ...sub, usage } },
+    });
   }
 }
 

@@ -13,6 +13,7 @@ router.post('/', authenticate, teamController.createTeam);
 
 // Takım işlemleri — :teamId kullanılır (teamGuard req.params.teamId okur)
 router.put('/:teamId',    authenticate, teamGuard, adminGuard, teamController.updateTeam);
+router.patch('/:teamId',  authenticate, teamGuard, adminGuard, teamController.updateTeam);
 router.delete('/:teamId', authenticate, teamGuard, adminGuard, teamController.deleteTeam);
 
 // Takım detay / ayarlar

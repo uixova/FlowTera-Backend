@@ -1,8 +1,9 @@
 const { getPresignedUploadUrl, getPresignedDownloadUrl } = require('../../utils/s3');
-const logger = require('../../utils/logger');
+const logger   = require('../../utils/logger');
+const FormData = require('form-data');
 
 const PYTHON_ML_URL     = process.env.PYTHON_ML_URL      || 'http://localhost:8000';
-const INTERNAL_API_KEY  = process.env.INTERNAL_API_KEY   || '';
+const INTERNAL_API_KEY  = process.env.INTERNAL_API_KEY   || 'flowtera-internal-secret';
 
 class UploadService {
   // Presigned yükleme URL'i üret
@@ -27,6 +28,29 @@ class UploadService {
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       logger.error('python-ml OCR hatası', { status: response.status, body: text }, 'upload');
+      throw new Error(`ML servisi hata döndürdü: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  // Direct file proxy — raw file buffer POSTed to Python ML service without S3 round-trip
+  async analyzeReceiptDirect(fileBuffer: Buffer, originalname: string, mimetype: string): Promise<any> {
+    const form = new FormData();
+    form.append('file', fileBuffer, { filename: originalname, contentType: mimetype });
+
+    const response = await fetch(`${PYTHON_ML_URL}/ml/ocr/parse-invoice`, {
+      method:  'POST',
+      headers: {
+        ...form.getHeaders(),
+        'X-Internal-API-Key': INTERNAL_API_KEY,
+      },
+      body: form.getBuffer(),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      logger.error('python-ml OCR direct hatası', { status: response.status, body: text }, 'upload');
       throw new Error(`ML servisi hata döndürdü: ${response.status}`);
     }
 

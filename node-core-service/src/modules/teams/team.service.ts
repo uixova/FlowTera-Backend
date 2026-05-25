@@ -1,7 +1,21 @@
 const prisma = require('../../config/prisma');
 const { DEFAULT_SUBSCRIPTION } = require('../../config/constants');
+const { getPresignedDownloadUrl, extractKeyFromUrl } = require('../../utils/s3');
 
 const ROLE_PRIORITY: Record<string, number> = { Admin: 1, Moderator: 2, Member: 3 };
+
+// Replace S3 direct URL with a presigned GET URL (1-hour expiry).
+// Silently keeps original URL if presigning fails or key cannot be extracted.
+async function _presignImageUrl(url: string | null): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const key = extractKeyFromUrl(url);
+    if (!key) return url;
+    return await getPresignedDownloadUrl(key, 3600);
+  } catch {
+    return url;
+  }
+}
 
 class TeamService {
   // Kullanıcının üye olduğu tüm takımları getir
@@ -11,10 +25,13 @@ class TeamService {
       include: { members: true },
     });
 
-    return teams.map((team: any) => ({
-      ...team,
-      membersCount: team.members?.length || 0,
-    }));
+    return Promise.all(
+      teams.map(async (team: any) => ({
+        ...team,
+        image:        await _presignImageUrl(team.image),
+        membersCount: team.members?.length || 0,
+      }))
+    );
   }
 
   // Takımı tam detayıyla getir
@@ -148,13 +165,24 @@ class TeamService {
     return prisma.team.update({ where: { id: teamId }, data });
   }
 
-  // Takım ayarlarını güncelle (settings Json alanı patch)
+  // Takım ayarlarını güncelle — team-level fields (name/category/image) are extracted
+  // and updated on the row; everything else is merged into the settings JSON column.
   async updateTeamSettings(teamId: string, settingsPatch: any) {
     const team = await prisma.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error('Takım bulunamadı.');
 
-    const merged = { ...(team.settings as any || {}), ...settingsPatch };
-    return prisma.team.update({ where: { id: teamId }, data: { settings: merged } });
+    const { name, category, image, settings: inlineSettings, ...restPatch } = settingsPatch;
+
+    const rowUpdate: any = {};
+    if (name     !== undefined) rowUpdate.name     = name;
+    if (category !== undefined) rowUpdate.category = category;
+    if (image    !== undefined) rowUpdate.image    = image;
+
+    // Prefer the nested `settings` object when present; fall back to remaining keys
+    const settingsToMerge = inlineSettings ?? restPatch;
+    rowUpdate.settings = { ...(team.settings as any || {}), ...settingsToMerge };
+
+    return prisma.team.update({ where: { id: teamId }, data: rowUpdate });
   }
 
   // Soft delete — yalnızca takım kurucusu silebilir
