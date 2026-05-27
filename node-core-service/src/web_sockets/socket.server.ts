@@ -100,6 +100,62 @@ const initWebSocketServer = (httpServer: any): any => {
 
   wss.on('close', () => clearInterval(heartbeatTimer));
 
+  // Bağlanan kullanıcıya bekleyen bildirimleri gönderir
+  const _deliverPendingNotifications = async (ws: any, userId: string, teamId: string, role: string): Promise<void> => {
+    try {
+      const prisma = require('../config/prisma');
+      const [infoRows, requestRows] = await Promise.all([
+        // Kullanıcının info/invite bildirimleri
+        prisma.notification.findMany({
+          where: { userId, type: { in: ['info', 'invite'] } },
+          orderBy: { date: 'asc' },
+          take: 50,
+        }),
+        // Admin ise takımın bekleyen expense request'leri
+        role === 'Admin' ? prisma.notification.findMany({
+          where: { teamId, type: 'request', status: 'pending' },
+          orderBy: { date: 'asc' },
+          take: 50,
+        }) : Promise.resolve([]),
+      ]);
+
+      // info/invite: notification:new olarak gönder
+      for (const n of infoRows) {
+        sendTo(ws, S.NOTIFICATION_NEW, {
+          id:       n.id,
+          type:     n.type,
+          category: n.category || undefined,
+          text:     n.text,
+          date:     n.date.toISOString(),
+          teamId:   n.teamId   || undefined,
+          sender:   n.userName || undefined,
+          userId:   n.userId   || undefined,
+        });
+      }
+
+      // request: request:sent olarak gönder (admin görür)
+      for (const r of requestRows) {
+        sendTo(ws, S.REQUEST_SENT, {
+          id:              r.id,
+          type:            r.type,
+          teamId:          r.teamId   || '',
+          category:        r.category || 'personal',
+          user:            r.userName || '',
+          title:           r.title    || '',
+          detail:          r.text     || '',
+          date:            r.date.toISOString(),
+          targetId:        r.targetId || undefined,
+          path:            r.path     || '/',
+          status:          r.status   || 'pending',
+          userId:          r.senderId || undefined,
+          rejectionReason: r.rejectionReason || undefined,
+        });
+      }
+    } catch (err: any) {
+      logger.wsError('Bekleyen bildirimler gönderilemedi', err);
+    }
+  };
+
   wss.on('connection', (ws: any, req: any) => {
     const params = new url.URL(req.url, 'ws://localhost').searchParams;
 
@@ -118,6 +174,9 @@ const initWebSocketServer = (httpServer: any): any => {
 
     joinRooms(ws, userId, teamId, role);
     sendTo(ws, S.CONNECTION, { status: 'connected', userId, teamId, role });
+
+    // Bağlantı kurulunca bekleyen bildirimleri gönder (offline iken kaçırılanlar)
+    _deliverPendingNotifications(ws, userId, teamId, role).catch(() => {});
 
     presenceHandler.onConnected(ws, userId, teamId);
 

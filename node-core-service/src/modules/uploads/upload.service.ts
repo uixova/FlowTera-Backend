@@ -11,9 +11,17 @@ class UploadService {
     return getPresignedUploadUrl(teamId, ext);
   }
 
+  // ML hata nesnesine HTTP status ekle → controller doğru kodu döndürebilir
+  private _mlError(status: number, body: string): Error {
+    let detail = body;
+    try { detail = JSON.parse(body)?.detail || body; } catch { /* raw text */ }
+    const err: any = new Error(detail || `OCR servisi hata döndürdü (${status})`);
+    err.statusCode  = status;
+    return err;
+  }
+
   // S3 key ile fatura analizi — presigned GET URL üretip python-ml'e gönderir
   async analyzeReceipt(key: string): Promise<any> {
-    // DB'den gelen key → presigned GET URL (python-ml doğrudan AWS kimlik bilgisi gerektirmez)
     const accessUrl = await getPresignedDownloadUrl(key, 120);
 
     const response = await fetch(`${PYTHON_ML_URL}/ml/ocr/extract-from-url`, {
@@ -28,7 +36,7 @@ class UploadService {
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       logger.error('python-ml OCR hatası', { status: response.status, body: text }, 'upload');
-      throw new Error(`ML servisi hata döndürdü: ${response.status}`);
+      throw this._mlError(response.status, text);
     }
 
     return response.json();
@@ -51,7 +59,7 @@ class UploadService {
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       logger.error('python-ml OCR direct hatası', { status: response.status, body: text }, 'upload');
-      throw new Error(`ML servisi hata döndürdü: ${response.status}`);
+      throw this._mlError(response.status, text);
     }
 
     return response.json();

@@ -2,13 +2,12 @@ const prisma                        = require('../../config/prisma');
 const { comparePassword, hashPassword } = require('../../utils/bcrypt');
 const { generateToken }             = require('../../utils/jwt');
 const { generateUserId }            = require('../../utils/generateId');
-const { DEFAULT_SUBSCRIPTION, DEFAULT_SETTINGS } = require('../../config/constants');
+const { DEFAULT_SUBSCRIPTION, DEFAULT_SETTINGS, OTP_TTL_MS, MAX_OTP_ATTEMPTS } = require('../../config/constants');
 const { logUserLogin }              = require('../../utils/logWriter');
 const { sendOtpEmail }              = require('../../utils/mailer');
 const { isDisposableEmail }         = require('../../utils/disposableMail');
 
-const OTP_TTL_MS   = 5 * 60 * 1000;
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = MAX_OTP_ATTEMPTS;
 const SKIP_OTP     = process.env.SKIP_EMAIL_OTP === 'true';
 
 const generateOtp = (): string =>

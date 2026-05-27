@@ -1,7 +1,7 @@
 """
 AI-powered invoice parser.
 
-Primary:  Google Gemini 1.5 Flash  (GEMINI_API_KEY)
+Primary:  Google Gemini 3.1 Flash  (GEMINI_API_KEY)
 Fallback: OpenAI GPT-4o-mini       (OPENAI_API_KEY)
 
 Security hardening:
@@ -38,11 +38,12 @@ _CURRENCIES = frozenset({
     "PHP", "VND", "KRW", "EGP", "NGN", "KES", "GHS", "MAD", "DZD", "PKR",
 })
 _CATEGORIES = frozenset({
-    "Food & Beverage", "Groceries", "Transportation", "Healthcare",
-    "Entertainment", "Utilities", "Shopping", "Accommodation", "Technology", "Other",
+    "Food", "Transport", "Accommodation", "Health", "Entertainment",
+    "Office", "Education", "Technology", "Shopping", "Utilities",
+    "Finance", "Events", "Marketing", "Legal", "Other",
 })
 _PAYMENTS = frozenset({
-    "Cash", "Credit Card", "Debit Card", "Bank Transfer", "Mobile Payment", "Check",
+    "Cash", "Credit Card", "Debit Card", "Bank Transfer", "Mobile Payment", "Check", "Other",
 })
 
 _DATE_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
@@ -57,8 +58,8 @@ _SCHEMA_COMMENT = """\
   "currency": "ISO-4217 code (GBP/USD/EUR/TRY…) or null",
   "date": "YYYY-MM-DD or null",
   "time": "HH:MM 24h or null",
-  "category": "Food & Beverage | Groceries | Transportation | Healthcare | Entertainment | Utilities | Shopping | Accommodation | Technology | Other — or null",
-  "payment_method": "Cash | Credit Card | Debit Card | Bank Transfer | Mobile Payment | Check — or null"
+  "category": "Food | Transport | Accommodation | Health | Entertainment | Office | Education | Technology | Shopping | Utilities | Finance | Events | Marketing | Legal | Other — or null",
+  "payment_method": "Cash | Credit Card | Debit Card | Bank Transfer | Mobile Payment | Check | Other — or null"
 }"""
 
 IMAGE_PROMPT = f"""Analyze this receipt/invoice image and extract structured data.
@@ -165,10 +166,17 @@ def _build(data: dict, confidence: float, raw_text: str = "") -> ParsedInvoice:
 # Provider availability
 
 def _has_gemini() -> bool:
-    return bool(settings.GEMINI_API_KEY)
+    key = (settings.GEMINI_API_KEY or "").strip()
+    return bool(key) and not key.startswith("#")
 
 def _has_openai() -> bool:
-    return bool(settings.OPENAI_API_KEY)
+    key = (settings.OPENAI_API_KEY or "").strip()
+    return bool(key) and not key.startswith("#")
+
+def _is_quota_error(exc: Exception) -> bool:
+    """True if the exception is a Gemini/Google quota-exhausted (429) error."""
+    msg = str(exc)
+    return "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower()
 
 
 # Raw provider calls (new google-genai SDK)
@@ -178,22 +186,56 @@ def _gemini_client() -> genai.Client:
 
 
 def _gemini_vision(image_bytes: bytes, mime_type: str, prompt: str) -> str:
+    """Try primary Gemini model; on 429 quota error fall back to GEMINI_FALLBACK_MODEL."""
     client = _gemini_client()
     image_part = genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-    response = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=[image_part, prompt],
-    )
-    return response.text
+
+    models_to_try = [settings.GEMINI_MODEL]
+    fb = (settings.GEMINI_FALLBACK_MODEL or "").strip()
+    if fb and fb != settings.GEMINI_MODEL:
+        models_to_try.append(fb)
+
+    last_exc: Exception = RuntimeError("Gemini unavailable")
+    for model in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=[image_part, prompt],
+            )
+            return response.text
+        except Exception as e:
+            last_exc = e
+            if _is_quota_error(e):
+                logger.warning("Gemini model %s quota exhausted, trying next model. %s", model, e)
+                continue
+            raise
+    raise last_exc
 
 
 def _gemini_text(prompt: str) -> str:
+    """Try primary Gemini model; on 429 quota error fall back to GEMINI_FALLBACK_MODEL."""
     client = _gemini_client()
-    response = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=prompt,
-    )
-    return response.text
+
+    models_to_try = [settings.GEMINI_MODEL]
+    fb = (settings.GEMINI_FALLBACK_MODEL or "").strip()
+    if fb and fb != settings.GEMINI_MODEL:
+        models_to_try.append(fb)
+
+    last_exc: Exception = RuntimeError("Gemini unavailable")
+    for model in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+            )
+            return response.text
+        except Exception as e:
+            last_exc = e
+            if _is_quota_error(e):
+                logger.warning("Gemini model %s quota exhausted, trying next model. %s", model, e)
+                continue
+            raise
+    raise last_exc
 
 
 def _openai_vision(image_bytes: bytes, mime_type: str, prompt: str) -> str:
@@ -237,10 +279,12 @@ def extract_raw_text(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
     """
     Transcribe visible text from an image (used by /extract endpoint).
     Returns {"raw_text": str, "confidence": float}.
+    Gemini primary (with fallback model) → OpenAI fallback → empty result.
     """
     image_bytes, mime_type = _ensure_vision_mime(image_bytes, mime_type)
     if _has_gemini():
         try:
+            # _gemini_vision already handles primary→fallback model chain
             text = _gemini_vision(image_bytes, mime_type, RAW_TEXT_PROMPT)
             return {"raw_text": text.strip(), "confidence": 0.92}
         except Exception as e:

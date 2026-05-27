@@ -137,6 +137,7 @@ model Expense {
   image           String?
   receipt         String?
   isReported      Boolean  @default(false)
+  deletedAt       DateTime? // Soft delete — null: aktif, tarih: silinmiş (S3 görseli korunur)
 
   // İlişkiler
   createdById     String
@@ -147,6 +148,7 @@ model Expense {
   @@index([teamId])
   @@index([createdById])
   @@index([teamId, status])
+  @@index([teamId, deletedAt])
 }
 
 model Trip {
@@ -172,6 +174,7 @@ model Trip {
   report          String?
   desc            String?
   icon            String?
+  deletedAt       DateTime? // Soft delete — null: aktif, tarih: silinmiş
 
   // İlişkiler
   createdById     String
@@ -182,6 +185,7 @@ model Trip {
   @@index([teamId])
   @@index([createdById])
   @@index([teamId, status])
+  @@index([teamId, deletedAt])
 }
 
 model Plan {

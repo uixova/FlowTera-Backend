@@ -174,6 +174,90 @@ const notifyMemberJoined = (teamId: string, newMemberName: string): void => {
   }
 };
 
+// Harcama talebi oluştur — Notification tablosuna request kaydı yazar + admin'e WS
+// autoApprove=true olduğunda çağrılmamalı
+const notifyExpenseRequest = async (
+  expenseId:  string,
+  title:      string,
+  amount:     number,
+  currency:   string,
+  teamId:     string,
+  createdById:string,
+  userName:   string,
+): Promise<void> => {
+  try {
+    const record = await prisma.notification.create({
+      data: {
+        type:     'request',
+        category: 'expense',
+        title,
+        text:     `${userName}, ${currency} ${Number(amount).toLocaleString('tr-TR')} tutarında gider talebi oluşturdu.`,
+        userName,
+        path:     '/expense',
+        status:   'pending',
+        teamId,
+        senderId: createdById,
+        targetId: expenseId,
+      },
+    });
+    const ws = getWs();
+    if (ws?.emitToTeamAdmin) {
+      ws.emitToTeamAdmin(teamId, 'request:update', {
+        action:  'new',
+        request: {
+          id: record.id, type: 'request', category: 'expense',
+          title, teamId, targetId: expenseId, status: 'pending',
+          user: userName, detail: record.text, date: record.date?.toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    logger.error('Gider talep bildirimi hatası', err, 'notify');
+  }
+};
+
+// Seyahat talebi oluştur
+const notifyTripRequest = async (
+  tripId:      string,
+  title:       string,
+  destination: string,
+  amount:      number,
+  currency:    string,
+  teamId:      string,
+  createdById: string,
+  userName:    string,
+): Promise<void> => {
+  try {
+    const record = await prisma.notification.create({
+      data: {
+        type:     'request',
+        category: 'travel',
+        title,
+        text:     `${userName}, ${destination} seyahati için ${currency} ${Number(amount).toLocaleString('tr-TR')} tutarında seyahat talebi oluşturdu.`,
+        userName,
+        path:     '/trip',
+        status:   'pending',
+        teamId,
+        senderId: createdById,
+        targetId: tripId,
+      },
+    });
+    const ws = getWs();
+    if (ws?.emitToTeamAdmin) {
+      ws.emitToTeamAdmin(teamId, 'request:update', {
+        action:  'new',
+        request: {
+          id: record.id, type: 'request', category: 'travel',
+          title, teamId, targetId: tripId, status: 'pending',
+          user: userName, detail: record.text, date: record.date?.toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    logger.error('Seyahat talep bildirimi hatası', err, 'notify');
+  }
+};
+
 module.exports = {
   sendNotification,
   notifyExpenseApproved,
@@ -183,5 +267,7 @@ module.exports = {
   notifyTeamInvite,
   notifyRequestResponded,
   notifyMemberJoined,
+  notifyExpenseRequest,
+  notifyTripRequest,
 };
 export {};

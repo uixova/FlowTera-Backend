@@ -13,7 +13,9 @@ router = APIRouter(prefix="/analysis", tags=["Analiz"])
 EXPENSE_QUERY = """
     SELECT id, title, category, merchant, amount, currency, status, date
     FROM "Expense"
-    WHERE "teamId" = $1 AND status = 'approved'
+    WHERE "teamId" = $1
+      AND status = 'approved'
+      AND "deletedAt" IS NULL
     ORDER BY date DESC
 """
 
@@ -22,6 +24,7 @@ EXPENSE_PERIOD_QUERY = """
     FROM "Expense"
     WHERE "teamId" = $1
       AND status = 'approved'
+      AND "deletedAt" IS NULL
       AND EXTRACT(YEAR  FROM date) = $2
       AND EXTRACT(MONTH FROM date) = $3
     ORDER BY date DESC

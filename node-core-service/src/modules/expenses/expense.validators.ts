@@ -18,7 +18,7 @@ const CURRENCIES = ['USD', 'EUR', 'TRY', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'] as c
 const createExpenseSchema = z.object({
   title:           z.string().min(1, 'Başlık zorunludur.').max(200),
   category:        z.enum(EXPENSE_CATEGORIES, { errorMap: () => ({ message: 'Geçersiz kategori.' }) }),
-  merchant:        z.string().min(1, 'Satıcı zorunludur.').max(200),
+  merchant:        z.string().max(200).optional().transform((v: string | undefined) => (v ?? '').trim() || 'Bilinmiyor'),
   date:            z.string().optional(),         // server-assigned if omitted
   amount:          z.number().positive('Tutar pozitif olmalıdır.').max(9_999_999),
   currency:        z.enum(CURRENCIES, { errorMap: () => ({ message: 'Desteklenmeyen para birimi.' }) }),

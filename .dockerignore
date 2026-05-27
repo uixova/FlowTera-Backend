@@ -1,0 +1,37 @@
+# Node modules
+node_modules/
+node-core-service/node_modules/
+api-gateway/node_modules/
+python-ml-service/venv/
+
+# Build çıktıları
+node-core-service/dist/
+api-gateway/dist/
+node-core-service/generated/
+
+# Geliştirme araçları / loglar
+*.log
+logs/
+node-core-service/logs/
+.env
+.env.*
+!.env.example
+
+# Git / IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Test / CI
+e2e_test.*
+coverage/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+python-ml-service/__pycache__/
+python-ml-service/app/**/__pycache__/
+
+# Frontend (farklı repo)
+FlowTera-Frontend/

@@ -28,8 +28,8 @@ class ExpenseController {
 
   async createExpense(req: any, res: any, next: any) {
     try {
-      const { title, category, merchant, amount, currency, teamId } = req.body;
-      if (!title || !category || !merchant || !amount || !currency || !teamId)
+      const { title, category, amount, currency, teamId } = req.body;
+      if (!title || !category || !amount || !currency || !teamId)
         return res.status(400).json({ status: 'ERROR', message: 'Zorunlu alanlar eksik.' });
 
       const createdById = req.user.userId;

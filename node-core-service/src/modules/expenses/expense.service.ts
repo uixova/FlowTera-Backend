@@ -2,7 +2,17 @@ const prisma   = require('../../config/prisma');
 const { DEFAULT_PAGE_SIZE } = require('../../config/constants');
 const logs     = require('../../utils/logWriter');
 const notify   = require('../../utils/notifyTrigger');
-const { keyToUrl } = require('../../utils/s3');
+const { keyToUrl, getPresignedDownloadUrl } = require('../../utils/s3');
+
+// AWS_S3_PUBLIC=true → statik URL (public bucket), aksi halde presigned URL (2 saat)
+const S3_PUBLIC          = process.env.AWS_S3_PUBLIC === 'true';
+const S3_DOWNLOAD_EXPIRES = parseInt(process.env.S3_DOWNLOAD_EXPIRES || '7200', 10);
+const resolveUrl = async (key: string | null): Promise<string | null> => {
+  if (!key) return null;
+  if (S3_PUBLIC) return keyToUrl(key);
+  try { return await getPresignedDownloadUrl(key, S3_DOWNLOAD_EXPIRES); }
+  catch { return keyToUrl(key); }
+};
 
 const PYTHON_ML_URL    = process.env.PYTHON_ML_URL    || 'http://localhost:8000';
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
@@ -43,19 +53,21 @@ const createdBySelect = {
   select: { name: true, avatar: true, isDeleted: true, subscription: true },
 };
 
-const enrichExpense = (expense: any) => {
+const enrichExpense = async (expense: any) => {
   const creator   = expense.createdBy;
   const isDeleted = creator?.isDeleted || false;
   const sub       = creator?.subscription as any;
 
-  // receipt ve report alanları S3 key saklar; tam URL hesaplanır
-  const receiptUrl = expense.receipt ? keyToUrl(expense.receipt) : null;
-  const reportUrl  = expense.report  ? keyToUrl(expense.report)  : null;
+  // receipt ve report S3 key tutar; presigned veya statik URL hesaplanır
+  const [rUrl, pUrl] = await Promise.all([
+    resolveUrl(expense.receipt),
+    resolveUrl(expense.report),
+  ]);
 
   return {
     ...expense,
-    receiptUrl,
-    reportUrl,
+    receiptUrl: rUrl,
+    reportUrl:  pUrl,
     createdBy:  { id: expense.createdById, name: isDeleted ? 'DeletedUser' : (creator?.name || 'Unknown') },
     user:       isDeleted ? 'DeletedUser' : (creator?.name || 'Unknown'),
     userAvatar: isDeleted ? null : (creator?.avatar || null),
@@ -71,7 +83,7 @@ class ExpenseService {
     const dateFilter: any = {};
     if (startDate) dateFilter.gte = new Date(startDate);
     if (endDate)   dateFilter.lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
-    const where: any = { teamId, ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}) };
+    const where: any = { teamId, deletedAt: null, ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}) };
 
     const [expenses, totalCount] = await Promise.all([
       prisma.expense.findMany({
@@ -84,8 +96,9 @@ class ExpenseService {
       prisma.expense.count({ where }),
     ]);
 
+    const enriched = await Promise.all(expenses.map(enrichExpense));
     return {
-      data:       expenses.map(enrichExpense),
+      data:       enriched,
       total:      totalCount,
       page,
       pageSize,
@@ -96,8 +109,8 @@ class ExpenseService {
 
   // Tekil harcama getir — userId ile takım üyeliği doğrulanır
   async getExpenseById(id: string, userId: string) {
-    const expense = await prisma.expense.findUnique({
-      where:   { id },
+    const expense = await prisma.expense.findFirst({
+      where:   { id, deletedAt: null },
       include: { createdBy: createdBySelect },
     });
     if (!expense) return null;
@@ -107,7 +120,7 @@ class ExpenseService {
     });
     if (!member) return null;
 
-    return enrichExpense(expense);
+    return await enrichExpense(expense);
   }
 
   // Yeni harcama oluştur
@@ -143,9 +156,17 @@ class ExpenseService {
       include: { createdBy: createdBySelect },
     });
 
-    const enriched  = enrichExpense(expense);
+    const enriched  = await enrichExpense(expense);
     const amountStr = `${input.currency} ${Number(input.amount).toLocaleString()}`;
     logs.logExpenseCreated(input.teamId, enriched.user, role, input.title, amountStr);
+
+    // Onay bekleyen giderler için admin'e request bildirimi oluştur + WS
+    if (!autoApprove) {
+      notify.notifyExpenseRequest(
+        expense.id, expense.title, expense.amount,
+        expense.currency, expense.teamId, expense.createdById, enriched.user,
+      ).catch(() => {});
+    }
 
     // isReported=true → arka planda PDF rapor üret ve S3'e yükle
     if (input.isReported) {
@@ -165,7 +186,7 @@ class ExpenseService {
     return enriched;
   }
 
-  // Harcama güncelle
+  // Harcama güncelle — değişiklik WS üzerinden takıma bildirilir
   async updateExpense(id: string, data: any) {
     const allowed = [
       'title', 'category', 'merchant', 'date', 'amount', 'currency', 'currencySymbol',
@@ -185,7 +206,25 @@ class ExpenseService {
       data:    updateData,
       include: { createdBy: createdBySelect },
     });
-    return enrichExpense(expense);
+    const enriched = await enrichExpense(expense);
+
+    // WS: takım admin'ine expense güncellendi bildirimi gönder
+    try {
+      const ws = require('../../web_sockets/socket.server');
+      if (ws?.emitToTeamAdmin) {
+        ws.emitToTeamAdmin(expense.teamId, 'request:update', {
+          action:  'expense_updated',
+          request: {
+            id: expense.id, type: 'expense_update', category: 'expense',
+            title: expense.title, teamId: expense.teamId, targetId: expense.id,
+            status: expense.status, detail: `Harcama güncellendi: ${expense.title}`,
+            date: new Date().toISOString(),
+          },
+        });
+      }
+    } catch { /* WS yoksa sessizce devam */ }
+
+    return enriched;
   }
 
   // Harcama durumunu güncelle (admin aksiyonu)
@@ -209,7 +248,7 @@ class ExpenseService {
       throw err;
     }
 
-    const enriched  = enrichExpense(expense);
+    const enriched  = await enrichExpense(expense);
     const amountStr = `${expense.currency} ${Number(expense.amount).toLocaleString()}`;
 
     // TeamLog + Bildirim — onay veya red
@@ -224,9 +263,16 @@ class ExpenseService {
     return enriched;
   }
 
-  // Harcama sil
+  // Harcama sil (soft delete — DB kaydı ve S3 görseli korunur)
   async deleteExpense(id: string) {
-    await prisma.expense.delete({ where: { id } });
+    const expense = await prisma.expense.findFirst({ where: { id, deletedAt: null } });
+    if (!expense) throw new Error('Harcama bulunamadı.');
+
+    await prisma.expense.update({
+      where: { id },
+      data:  { deletedAt: new Date() },
+    });
+    // S3'teki receipt kasıtlı olarak SİLİNMİYOR — arşivde görünmeye devam eder
     return { message: 'Harcama başarıyla silindi.' };
   }
 }

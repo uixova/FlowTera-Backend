@@ -25,7 +25,7 @@ class TripController {
   async createTrip(req: any, res: any, next: any) {
     try {
       const { title, category, destination, vehicle, amount, currency, teamId } = req.body;
-      if (!title || !category || !destination || !vehicle || !amount || !currency || !teamId)
+      if (!title || !category || !destination || !vehicle || amount === undefined || amount === null || !currency || !teamId)
         return res.status(400).json({ status: 'ERROR', message: 'Zorunlu alanlar eksik.' });
 
       const createdById = req.user.userId;

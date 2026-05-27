@@ -1,5 +1,5 @@
 const prisma = require('../../config/prisma');
-const { DEFAULT_SUBSCRIPTION } = require('../../config/constants');
+const { DEFAULT_SUBSCRIPTION, S3_TEAM_VIEW_EXPIRES_SEC } = require('../../config/constants');
 const { getPresignedDownloadUrl, extractKeyFromUrl } = require('../../utils/s3');
 
 const ROLE_PRIORITY: Record<string, number> = { Admin: 1, Moderator: 2, Member: 3 };
@@ -11,7 +11,7 @@ async function _presignImageUrl(url: string | null): Promise<string | null> {
   try {
     const key = extractKeyFromUrl(url);
     if (!key) return url;
-    return await getPresignedDownloadUrl(key, 3600);
+    return await getPresignedDownloadUrl(key, S3_TEAM_VIEW_EXPIRES_SEC);
   } catch {
     return url;
   }

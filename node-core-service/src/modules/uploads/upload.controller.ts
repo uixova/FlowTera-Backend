@@ -1,6 +1,7 @@
 const uploadService      = require('./upload.service');
 const subscriptionService = require('../subscriptions/subscription.service');
 const { getPresignedDownloadUrl, getAvatarUploadUrl, getTeamImageUploadUrl } = require('../../utils/s3');
+const { S3_DOWNLOAD_EXPIRES_SEC } = require('../../config/constants');
 
 class UploadController {
   // GET /uploads/presigned?ext=jpg&teamId=xxx
@@ -29,8 +30,8 @@ class UploadController {
       if (!key || typeof key !== 'string' || !key.startsWith('teams/')) {
         return res.status(400).json({ status: 'ERROR', message: 'Geçerli bir key zorunludur.' });
       }
-      const viewUrl = await getPresignedDownloadUrl(key, 300);
-      return res.status(200).json({ status: 'OK', data: { viewUrl, expiresIn: 300 } });
+      const viewUrl = await getPresignedDownloadUrl(key, S3_DOWNLOAD_EXPIRES_SEC);
+      return res.status(200).json({ status: 'OK', data: { viewUrl, expiresIn: S3_DOWNLOAD_EXPIRES_SEC } });
     } catch (error) { next(error); }
   }
 
@@ -61,6 +62,13 @@ class UploadController {
     } catch (error) { next(error); }
   }
 
+  // ML servisinden gelen statusCode'u response'a yansıt
+  private _handleMlError(error: any, res: any) {
+    const status  = error?.statusCode || 500;
+    const message = error?.message    || 'OCR servisi hatası.';
+    return res.status(status).json({ status: 'ERROR', message });
+  }
+
   // POST /uploads/analyze-receipt — OCR analysis via Python ML service
   // Body: { key: string } — S3 key of the uploaded receipt image
   async analyzeReceipt(req: any, res: any, next: any) {
@@ -72,14 +80,14 @@ class UploadController {
 
       const result = await uploadService.analyzeReceipt(key);
 
-      // Increment OCR usage counter in the user's subscription (fire-and-forget)
       const userId = req.user?.userId;
-      if (userId) {
-        subscriptionService.incrementUsage(userId, 'ocr').catch(() => {});
-      }
+      if (userId) subscriptionService.incrementUsage(userId, 'ocr').catch(() => {});
 
       return res.status(200).json({ status: 'OK', data: result });
-    } catch (error) { next(error); }
+    } catch (error: any) {
+      if (error?.statusCode) return this._handleMlError(error, res);
+      next(error);
+    }
   }
 
   // POST /uploads/ocr-direct — Direct file upload OCR (bypasses S3)
@@ -93,14 +101,14 @@ class UploadController {
       const { buffer, originalname, mimetype } = req.file;
       const result = await uploadService.analyzeReceiptDirect(buffer, originalname, mimetype);
 
-      // Increment OCR usage counter — same as analyzeReceipt (fire-and-forget)
       const userId = req.user?.userId;
-      if (userId) {
-        subscriptionService.incrementUsage(userId, 'ocr').catch(() => {});
-      }
+      if (userId) subscriptionService.incrementUsage(userId, 'ocr').catch(() => {});
 
       return res.status(200).json({ status: 'OK', data: result });
-    } catch (error) { next(error); }
+    } catch (error: any) {
+      if (error?.statusCode) return this._handleMlError(error, res);
+      next(error);
+    }
   }
 }
 

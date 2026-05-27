@@ -29,13 +29,13 @@ class TripService {
 
     const [trips, totalCount] = await Promise.all([
       prisma.trip.findMany({
-        where:   { teamId },
+        where:   { teamId, deletedAt: null },
         skip,
         take:    pageSize,
         orderBy: { startDate: 'asc' },
         include: { createdBy: createdBySelect },
       }),
-      prisma.trip.count({ where: { teamId } }),
+      prisma.trip.count({ where: { teamId, deletedAt: null } }),
     ]);
 
     return {
@@ -50,8 +50,8 @@ class TripService {
 
   // Tekil seyahat getir — userId ile takım üyeliği doğrulanır
   async getTripById(tripId: string, userId: string) {
-    const trip = await prisma.trip.findUnique({
-      where:   { id: tripId },
+    const trip = await prisma.trip.findFirst({
+      where:   { id: tripId, deletedAt: null },
       include: { createdBy: createdBySelect },
     });
     if (!trip) return null;
@@ -99,6 +99,12 @@ class TripService {
     // TeamLog — seyahat eklendi
     logs.logTripCreated(input.teamId, enriched.userName, role, input.title, input.destination, amountStr);
 
+    // Admin'e request bildirimi oluştur + WS
+    notify.notifyTripRequest(
+      trip.id, trip.title, input.destination || trip.destination,
+      trip.amount, trip.currency, trip.teamId, trip.createdById, enriched.userName,
+    ).catch(() => {});
+
     return enriched;
   }
 
@@ -124,7 +130,25 @@ class TripService {
       data:    updateData,
       include: { createdBy: createdBySelect },
     });
-    return enrichTrip(trip);
+    const enriched = enrichTrip(trip);
+
+    // WS: takım admin'ine seyahat güncellendi bildirimi gönder
+    try {
+      const ws = require('../../web_sockets/socket.server');
+      if (ws?.emitToTeamAdmin) {
+        ws.emitToTeamAdmin(trip.teamId, 'request:update', {
+          action:  'trip_updated',
+          request: {
+            id: trip.id, type: 'trip_update', category: 'travel',
+            title: trip.title, teamId: trip.teamId, targetId: trip.id,
+            status: trip.status, detail: `Seyahat güncellendi: ${trip.title}`,
+            date: new Date().toISOString(),
+          },
+        });
+      }
+    } catch { /* WS yoksa sessizce devam */ }
+
+    return enriched;
   }
 
   // Durum geçişi: pending → onroad → completed (admin aksiyonu)
@@ -166,9 +190,15 @@ class TripService {
     return enriched;
   }
 
-  // Seyahat sil
+  // Seyahat sil (soft delete — S3 görseli ve DB kaydı korunur)
   async deleteTrip(id: string) {
-    await prisma.trip.delete({ where: { id } });
+    const trip = await prisma.trip.findFirst({ where: { id, deletedAt: null } });
+    if (!trip) throw new Error('Seyahat bulunamadı.');
+
+    await prisma.trip.update({
+      where: { id },
+      data:  { deletedAt: new Date() },
+    });
     return { message: 'Seyahat başarıyla silindi.' };
   }
 }

@@ -13,7 +13,10 @@ const logger = require('../utils/logger');
 const rbac = (permissionKey: string) => async (req: any, res: any, next: any): Promise<void> => {
   try {
     const userId = req.user?.userId;
-    const teamId = req.params.teamId || req.params.id || req.query.teamId;
+    // teamId: explicit teamId param → query → body (POST trips) → teamGuard cache
+    // NOT: req.params.id kullanılmaz — /:id rotalarında id genellikle kaynak UUID'sidir (team değil).
+    const teamId = req.params.teamId || req.query.teamId as string || req.body?.teamId
+                   || req.teamMember?.teamId; // teamGuard önceden çalıştıysa
 
     if (!userId || !teamId) {
       res.status(400).json({ status: 'ERROR', message: 'Yetki kontrolü için teamId gereklidir.' });

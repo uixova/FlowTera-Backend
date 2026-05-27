@@ -123,9 +123,35 @@ class RequestService {
       logs.logRequestRejected(teamId, adminName, row.title || '', rejectionReason);
     }
 
-    // Talep sahibine bildirim gönder
+    // Talep sahibine kategori-spesifik bildirim gönder
     if (row.senderId) {
-      notify.notifyRequestResponded(row.senderId, teamId, row.title || 'Talep', action, rejectionReason);
+      if (row.category === 'expense') {
+        action === 'approved'
+          ? notify.notifyExpenseApproved(row.senderId, teamId, row.title || '')
+          : notify.notifyExpenseRejected(row.senderId, teamId, row.title || '', rejectionReason);
+      } else if (row.category === 'travel') {
+        action === 'approved'
+          ? notify.notifyTripApproved(row.senderId, teamId, row.title || '')
+          : notify.notifyTripRejected(row.senderId, teamId, row.title || '', rejectionReason);
+      } else {
+        notify.notifyRequestResponded(row.senderId, teamId, row.title || 'Talep', action, rejectionReason);
+      }
+    }
+
+    // Durumu ilgili Expense / Trip kaydına yansıt
+    if (row.targetId) {
+      const rejectData = action === 'rejected' ? (rejectionReason || null) : null;
+      if (row.category === 'expense') {
+        await prisma.expense.update({
+          where: { id: row.targetId },
+          data:  { status: action, rejectionReason: rejectData },
+        }).catch(() => {/* expense silinmişse görmezden gel */});
+      } else if (row.category === 'travel') {
+        await prisma.trip.update({
+          where: { id: row.targetId },
+          data:  { status: action, rejectionReason: rejectData },
+        }).catch(() => {/* trip silinmişse görmezden gel */});
+      }
     }
 
     return mapRequest(updated);

@@ -22,7 +22,7 @@ const createTripSchema = z.object({
   startDate:      z.string().optional(),
   endDate:        z.string().optional(),
   duration:       z.string().max(50).optional(),
-  amount:         z.number().positive('Tutar pozitif olmalıdır.').max(9_999_999),
+  amount:         z.number().min(0, 'Tutar negatif olamaz.').max(9_999_999).optional().default(0),
   currency:       z.enum(CURRENCIES, { errorMap: () => ({ message: 'Desteklenmeyen para birimi.' }) }),
   currencySymbol: z.string().max(5).optional(),  // server-assigned if omitted
   localAmount:    z.number().positive().max(9_999_999).optional(),

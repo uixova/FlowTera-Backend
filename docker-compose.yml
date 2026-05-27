@@ -1,0 +1,150 @@
+# ══════════════════════════════════════════════════════════════════
+#  FlowTera — Geliştirme Docker Compose
+#  Kullanım: docker compose up --build
+#
+#  Servisler birbirine servis adı üzerinden (Docker DNS) ulaşır.
+#  Dışarıya açılan portlar: 5432, 6379, 3001, 8000, 3002
+# ══════════════════════════════════════════════════════════════════
+
+services:
+
+  # PostgreSQL 
+  postgres:
+    image: postgres:16-alpine
+    container_name: flowtera_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-flowtera}
+      POSTGRES_USER:     ${POSTGRES_USER:-flowtera}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowtera_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-flowtera}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 
+  redis:
+    image: redis:7-alpine
+    container_name: flowtera_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node Core Service 
+  node-core:
+    build:
+      context: .                              # Proje kökü (Prisma şeması için)
+      dockerfile: node-core-service/Dockerfile
+    container_name: flowtera_node_core
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV:       development
+      PORT:           3001
+      DATABASE_URL:   postgresql://${POSTGRES_USER:-flowtera}:${POSTGRES_PASSWORD:-flowtera_secret}@postgres:5432/${POSTGRES_DB:-flowtera}
+      REDIS_URL:      redis://redis:6379
+      JWT_SECRET:     ${JWT_SECRET:-change_me_in_production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CORS_ORIGIN:    ${CORS_ORIGIN:-http://localhost:3000}
+      # AWS S3
+      AWS_REGION:          ${AWS_REGION:-}
+      AWS_ACCESS_KEY_ID:   ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      S3_BUCKET_NAME:      ${S3_BUCKET_NAME:-}
+      # Stripe
+      STRIPE_SECRET_KEY:      ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET:  ${STRIPE_WEBHOOK_SECRET:-}
+      # Mail
+      SMTP_HOST:    ${SMTP_HOST:-}
+      SMTP_PORT:    ${SMTP_PORT:-587}
+      SMTP_USER:    ${SMTP_USER:-}
+      SMTP_PASS:    ${SMTP_PASS:-}
+      FROM_EMAIL:   ${FROM_EMAIL:-}
+      # Internal auth
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-flowtera_internal_key}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Python ML Service 
+  python-ml:
+    build:
+      context: python-ml-service/
+      dockerfile: Dockerfile
+    container_name: flowtera_python_ml
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL:       postgresql://${POSTGRES_USER:-flowtera}:${POSTGRES_PASSWORD:-flowtera_secret}@postgres:5432/${POSTGRES_DB:-flowtera}
+      INTERNAL_API_KEY:   ${INTERNAL_API_KEY:-flowtera_internal_key}
+      GEMINI_API_KEY:     ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY:     ${OPENAI_API_KEY:-}
+      GEMINI_MODEL:       ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENAI_MODEL:       ${OPENAI_MODEL:-gpt-4o-mini}
+      DB_POOL_MIN:        ${DB_POOL_MIN:-2}
+      DB_POOL_MAX:        ${DB_POOL_MAX:-10}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # API Gateway 
+  api-gateway:
+    build:
+      context: api-gateway/
+      dockerfile: Dockerfile
+    container_name: flowtera_api_gateway
+    restart: unless-stopped
+    depends_on:
+      node-core:
+        condition: service_healthy
+      python-ml:
+        condition: service_healthy
+    environment:
+      PORT:               3002
+      NODE_SERVICE_URL:   http://node-core:3001
+      PYTHON_SERVICE_URL: http://python-ml:8000
+      INTERNAL_API_KEY:   ${INTERNAL_API_KEY:-flowtera_internal_key}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX:       ${RATE_LIMIT_MAX:-100}
+    ports:
+      - "3002:3002"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
