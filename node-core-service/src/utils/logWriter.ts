@@ -115,61 +115,61 @@ const writeMemberLog = (
 
 const logExpenseCreated = (teamId: string, userName: string, role: string, title: string, amount: string) =>
   writeTeamLog({ teamId, type: 'expense_add', userName, role, badge: roleToBadge(role),
-    action: 'yeni harcama ekledi:', target: title, amount });
+    action: 'expense_add', target: title, amount });
 
 const logExpenseApproved = (teamId: string, adminName: string, title: string, amount: string) =>
   writeTeamLog({ teamId, type: 'expense_approve', userName: adminName, role: 'Admin', badge: 'Admin',
-    action: 'harcamayı onayladı:', target: title, amount,
-    tag: 'Onaylandı', tagClass: 'hi-status-green' });
+    action: 'expense_approve', target: title, amount,
+    tag: 'approved', tagClass: 'hi-status-green' });
 
 const logExpenseRejected = (teamId: string, adminName: string, title: string, reason?: string) =>
   writeTeamLog({ teamId, type: 'rejection', userName: adminName, role: 'Admin', badge: 'Admin',
-    action: 'harcamayı reddetti:', target: title,
-    tag: 'Reddedildi', tagClass: 'hi-status-red',
+    action: 'rejection', target: title,
+    tag: 'rejected', tagClass: 'hi-status-red',
     details: reason ? { rejection_reason: reason } : undefined });
 
 const logTripCreated = (teamId: string, userName: string, role: string, title: string, destination: string, amount: string) =>
   writeTeamLog({ teamId, type: 'trip_add', userName, role, badge: roleToBadge(role),
-    action: 'yeni seyahat ekledi:', target: title, amount,
+    action: 'trip_add', target: title, amount,
     details: { destination } });
 
 const logTripApproved = (teamId: string, adminName: string, title: string, destination: string, amount: string) =>
   writeTeamLog({ teamId, type: 'trip_approval', userName: adminName, role: 'Admin', badge: 'Admin',
-    action: 'seyahati onayladı:', target: title, amount,
+    action: 'trip_approval', target: title, amount,
     details: { destination } });
 
 const logTripStatusUpdate = (teamId: string, userName: string, title: string, newStatus: string, destination: string) =>
   writeTeamLog({ teamId, type: 'status_update', userName, role: 'Member', badge: 'Member',
-    action: 'şu anda:', target: `${newStatus} (${destination})`,
+    action: 'status_update', target: `${newStatus} (${destination})`,
     tag: newStatus, tagClass: newStatus === 'onroad' ? 'onroad' : 'hi-status-green' });
 
 const logMemberJoined = (teamId: string, adminName: string, newMemberName: string, roleName: string) =>
   writeTeamLog({ teamId, type: 'member_join', userName: adminName, role: 'Admin', badge: 'Admin',
-    action: 'yeni üye ekledi:', target: newMemberName,
-    tag: 'Yeni Üye', tagClass: 'hi-tag',
+    action: 'member_join', target: newMemberName,
+    tag: 'new_member', tagClass: 'hi-tag',
     details: { assigned_role: roleName } });
 
 const logMemberRemoved = (teamId: string, adminName: string, memberName: string) =>
   writeTeamLog({ teamId, type: 'member_remove', userName: adminName, role: 'Admin', badge: 'Admin',
-    action: 'üyeyi çıkardı:', target: memberName,
-    tag: 'Çıkarıldı', tagClass: 'hi-status-red' });
+    action: 'member_remove', target: memberName,
+    tag: 'removed', tagClass: 'hi-status-red' });
 
 const logRequestApproved = (teamId: string, adminName: string, title: string) =>
   writeTeamLog({ teamId, type: 'request_approve', userName: adminName, role: 'Admin', badge: 'Admin',
-    action: 'talebi onayladı:', target: title,
-    tag: 'Onaylandı', tagClass: 'hi-status-green' });
+    action: 'request_approve', target: title,
+    tag: 'approved', tagClass: 'hi-status-green' });
 
 const logRequestRejected = (teamId: string, adminName: string, title: string, reason?: string) =>
   writeTeamLog({ teamId, type: 'request_reject', userName: adminName, role: 'Admin', badge: 'Admin',
-    action: 'talebi reddetti:', target: title,
-    tag: 'Reddedildi', tagClass: 'hi-status-red',
+    action: 'request_reject', target: title,
+    tag: 'rejected', tagClass: 'hi-status-red',
     details: reason ? { rejection_reason: reason } : undefined });
 
-const logUserLogin = (userId: string, email: string) =>
-  writeUserLog(userId, `Giriş yapıldı — e-posta: ${email}`);
+const logUserLogin = (userId: string, _email: string) =>
+  writeUserLog(userId, 'act_login');
 
 const logUserLogout = (userId: string) =>
-  writeUserLog(userId, 'Oturum kapatıldı');
+  writeUserLog(userId, 'act_logout');
 
 module.exports = {
   writeTeamLog,

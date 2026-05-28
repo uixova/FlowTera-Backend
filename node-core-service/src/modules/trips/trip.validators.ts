@@ -2,7 +2,7 @@ const { z } = require('zod');
 const { CURRENCIES } = require('../expenses/expense.validators');
 
 const TRIP_CATEGORIES = [
-  'Business', 'Vacation', 'Event', 'Conference', 'Training', 'Other',
+  'Business', 'Vacation', 'Event', 'Conference', 'Training', 'Operation', 'Marketing', 'Other',
 ] as const;
 
 const TRIP_VEHICLES = [
