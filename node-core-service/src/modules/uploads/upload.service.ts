@@ -3,7 +3,7 @@ const logger   = require('../../utils/logger');
 const FormData = require('form-data');
 
 const PYTHON_ML_URL     = process.env.PYTHON_ML_URL      || 'http://localhost:8000';
-const INTERNAL_API_KEY  = process.env.INTERNAL_API_KEY   || 'flowtera-internal-secret';
+const INTERNAL_API_KEY  = process.env.INTERNAL_API_KEY   || '';
 
 class UploadService {
   // Presigned yükleme URL'i üret
