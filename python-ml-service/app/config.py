@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     DATABASE_URL:     str = ""
-    INTERNAL_API_KEY: str = "flowtera-internal-secret"
+    INTERNAL_API_KEY: str = ""
     PORT:             int = 8000
     NODE_SERVICE_URL: str = "http://localhost:3001"
 
