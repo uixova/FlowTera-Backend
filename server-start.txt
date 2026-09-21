@@ -1,0 +1,18 @@
+3 servisi başlatmak için:
+
+
+# Base dir
+cd /home/kair3nx/Masaüstü/FlowTera-Backend
+Terminal 1 — Node Core (port 3001)
+
+
+cd node-core-service && npx tsx src/server.ts
+Terminal 2 — API Gateway (port 3002)
+
+
+cd api-gateway && npx tsx src/server.ts
+Terminal 3 — Python ML (port 8000)
+
+
+source .venv/bin/activate
+cd python-ml-service && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
